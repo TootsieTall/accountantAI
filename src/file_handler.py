@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 import logging
 import config
-from src.utils import save_metadata, clean_filename
+from src.utils import clean_filename
 
 logger = logging.getLogger(__name__)
 
@@ -82,22 +82,6 @@ def organize_document(pdf_path, document_data, client_folder_name=None):
         # Copy the file with more retry attempts
         safe_copy_file(pdf_path, dest_path, max_retries=5)
         logger.info(f"File copied successfully: {dest_path}")
-
-        # Create metadata file - Store this in a separate metadata folder instead of the results folder
-        metadata_dir = config.METADATA_DIR  # Use the METADATA_DIR from config
-        metadata_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Keep the same relative path structure but in the metadata directory
-        relative_path = dest_path.relative_to(config.PROCESSED_DIR)
-        metadata_path = metadata_dir / relative_path
-        metadata_path = metadata_path.with_suffix('.json')
-        
-        # Create directory structure for metadata file
-        metadata_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Save metadata to metadata directory only, not in processed directory
-        save_metadata(metadata_path, document_data)
-        logger.info(f"Metadata saved to: {metadata_path}")
         
         # Delete the source file after successful processing
         delete_source_file(pdf_path)
