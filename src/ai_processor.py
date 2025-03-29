@@ -7,6 +7,7 @@ import subprocess
 import sys
 import shutil
 import platform
+import glob
 from pathlib import Path
 from pdf2image import convert_from_path
 import anthropic
@@ -16,26 +17,49 @@ logger = logging.getLogger(__name__)
 
 def find_poppler_mac():
     """Find Poppler installation on macOS"""
+    # Direct binary check first - most reliable
+    try:
+        result = subprocess.run(['which', 'pdftoppm'], capture_output=True, text=True)
+        if result.returncode == 0:
+            bin_path = result.stdout.strip()
+            bin_dir = os.path.dirname(bin_path)
+            return bin_dir
+    except Exception:
+        pass
+    
     # Common Homebrew installation paths
     common_paths = [
         "/usr/local/bin",  # Intel Macs
         "/opt/homebrew/bin",  # Apple Silicon
+        os.path.expanduser("~/homebrew/bin")  # Custom Homebrew
+    ]
+    
+    # Check direct paths first
+    for path in common_paths:
+        if os.path.exists(os.path.join(path, "pdftoppm")):
+            return path
+    
+    # Try Homebrew Cellar paths with glob
+    cellar_patterns = [
         "/usr/local/Cellar/poppler/*/bin",
         "/opt/homebrew/Cellar/poppler/*/bin"
     ]
     
-    # Try to find pdftoppm in common locations
-    for path_pattern in common_paths:
-        if '*' in path_pattern:
-            # Handle wildcard paths like /opt/homebrew/Cellar/poppler/*/bin
-            import glob
-            for actual_path in glob.glob(path_pattern):
-                if os.path.exists(os.path.join(actual_path, "pdftoppm")):
-                    return actual_path
-        else:
-            # Handle direct paths
-            if os.path.exists(os.path.join(path_pattern, "pdftoppm")):
-                return path_pattern
+    for pattern in cellar_patterns:
+        matches = glob.glob(pattern)
+        for match in matches:
+            if os.path.exists(os.path.join(match, "pdftoppm")):
+                return match
+    
+    # Last resort - find pdftoppm anywhere in common directories
+    search_roots = ['/usr/local', '/opt/homebrew', '/opt/local']
+    for root in search_roots:
+        if not os.path.exists(root):
+            continue
+        
+        for dirpath, dirnames, filenames in os.walk(root):
+            if 'pdftoppm' in filenames:
+                return dirpath
     
     return None
 
@@ -51,37 +75,53 @@ def check_poppler_installation():
                 os.environ['PATH'] = f"{poppler_path}{os.pathsep}{os.environ['PATH']}"
             logger.info(f"Using Poppler from POPPLER_PATH: {poppler_path}")
             return True, "Poppler is installed and available via POPPLER_PATH"
-            
-        # Check system PATH
+        
         if system == "Darwin":  # macOS
-            # First try which command
-            try:
-                result = subprocess.run(['which', 'pdftoppm'], capture_output=True, text=True)
-                if result.returncode == 0:
-                    poppler_path = os.path.dirname(result.stdout.strip())
-                    logger.info(f"Found Poppler in PATH: {poppler_path}")
-                    return True, "Poppler is installed and available in PATH"
-            except Exception as e:
-                logger.warning(f"Error checking poppler with 'which': {str(e)}")
-            
-            # Try to find in Homebrew locations
             poppler_path = find_poppler_mac()
             if poppler_path:
-                # Add to PATH if not already there
+                # Add to PATH and env var
                 if poppler_path not in os.environ['PATH']:
                     os.environ['PATH'] = f"{poppler_path}{os.pathsep}{os.environ['PATH']}"
                 os.environ['POPPLER_PATH'] = poppler_path
-                logger.info(f"Found Poppler in Homebrew location: {poppler_path}")
+                logger.info(f"Found Poppler on macOS: {poppler_path}")
                 return True, f"Poppler found at: {poppler_path}"
-                
-            # Last try: check if it's available but not in PATH
-            for binary in ["pdftoppm", "pdfinfo"]:
-                path = shutil.which(binary)
-                if path:
-                    poppler_dir = os.path.dirname(path)
-                    os.environ['POPPLER_PATH'] = poppler_dir
-                    logger.info(f"Found Poppler binary {binary} at: {path}")
-                    return True, f"Poppler found at: {poppler_dir}"
+            
+            # Double-check system PATH
+            for dir_path in os.environ['PATH'].split(os.pathsep):
+                pdftoppm_path = os.path.join(dir_path, 'pdftoppm')
+                if os.path.exists(pdftoppm_path) and os.access(pdftoppm_path, os.X_OK):
+                    os.environ['POPPLER_PATH'] = dir_path
+                    logger.info(f"Found pdftoppm in PATH: {dir_path}")
+                    return True, f"Poppler found in PATH at: {dir_path}"
+                    
+            # Special case - try to run Homebrew installation
+            try:
+                logger.info("Attempting to install Poppler with Homebrew")
+                subprocess.run(['brew', 'install', 'poppler'], check=True)
+                # Check again after installation
+                poppler_path = find_poppler_mac()
+                if poppler_path:
+                    os.environ['POPPLER_PATH'] = poppler_path
+                    os.environ['PATH'] = f"{poppler_path}{os.pathsep}{os.environ['PATH']}"
+                    logger.info(f"Installed Poppler with Homebrew: {poppler_path}")
+                    return True, f"Poppler installed at: {poppler_path}"
+            except Exception as e:
+                logger.warning(f"Failed to install Poppler with Homebrew: {e}")
+            
+            # Last resort - hard-coded paths for M1/M2 Macs and Intel Macs
+            fallback_paths = [
+                "/opt/homebrew/bin",
+                "/usr/local/bin",
+                "/opt/homebrew/Cellar/poppler/25.03.0/bin",  # Version may vary
+                "/usr/local/Cellar/poppler/25.03.0/bin"
+            ]
+            
+            for path in fallback_paths:
+                if os.path.exists(path):
+                    os.environ['POPPLER_PATH'] = path
+                    os.environ['PATH'] = f"{path}{os.pathsep}{os.environ['PATH']}"
+                    logger.info(f"Using fallback Poppler path: {path}")
+                    return True, f"Using fallback Poppler path: {path}"
             
             return False, "Poppler is not installed or not in PATH. Install using: brew install poppler"
         
@@ -91,9 +131,9 @@ def check_poppler_installation():
                 # Try to find poppler in common locations
                 common_paths = [
                     os.path.join(os.path.expanduser('~'), 'poppler', 'bin'),
-                    r'C:\\Program Files\\poppler\\bin',
-                    r'C:\\Program Files (x86)\\poppler\\bin',
-                    r'C:\\poppler\\bin'
+                    r'C:\Program Files\poppler\bin',
+                    r'C:\Program Files (x86)\poppler\bin',
+                    r'C:\poppler\bin'
                 ]
                 found = False
                 for path in common_paths:
@@ -145,37 +185,61 @@ def process_document(pdf_path):
         images = None
         pdf_conversion_retries = 3
 
-        for attempt in range(pdf_conversion_retries):
+        # First try a direct approach for macOS
+        if platform.system() == "Darwin":
             try:
-                # On macOS, try to set DPI lower to avoid memory issues
-                dpi = 150 if platform.system() == "Darwin" else 200
+                # Try direct command line approach first
+                tmp_output = "/tmp/pdf_page.png"
+                cmd = ["pdftoppm", "-png", "-singlefile", "-f", "1", "-l", "1", str(pdf_path), "/tmp/pdf_page"]
+                logger.info(f"Running direct command: {' '.join(cmd)}")
                 
-                # Explicitly pass poppler_path if available
-                kwargs = {}
-                if 'POPPLER_PATH' in os.environ and os.environ.get('POPPLER_PATH'):
-                    poppler_path = os.environ.get('POPPLER_PATH')
-                    logger.info(f"Using explicit poppler_path: {poppler_path}")
-                    kwargs['poppler_path'] = poppler_path
+                subprocess.run(cmd, check=True, capture_output=True)
                 
-                # Log the current PATH environment variable
-                logger.info(f"Current PATH: {os.environ.get('PATH', '')}")
-                logger.info(f"Attempting to convert PDF: {pdf_path} with kwargs: {kwargs}")
-                
-                # Attempt conversion with explicit parameters
-                images = convert_from_path(pdf_path, first_page=1, last_page=1, dpi=dpi, **kwargs)
-                break
+                if os.path.exists(tmp_output):
+                    from PIL import Image
+                    logger.info(f"Direct conversion succeeded: {tmp_output}")
+                    images = [Image.open(tmp_output)]
             except Exception as e:
-                logger.warning(f"PDF conversion failed (attempt {attempt+1}/{pdf_conversion_retries}). Retrying: {str(e)}")
-                
-                # Check poppler again - it might need to be relocated
-                poppler_installed, message = check_poppler_installation()
-                if not poppler_installed:
-                    logger.error(f"Poppler dependency still not found after retry check: {message}")
-                
-                time.sleep(1)
-                if attempt == pdf_conversion_retries - 1:
-                    logger.error(f"PDF conversion failed after {pdf_conversion_retries} attempts: {str(e)}")
-                    raise
+                logger.warning(f"Direct conversion failed: {e}")
+
+        # If direct approach failed or not on macOS, try the standard library
+        if not images:
+            for attempt in range(pdf_conversion_retries):
+                try:
+                    # On macOS, try to set DPI lower to avoid memory issues
+                    dpi = 150 if platform.system() == "Darwin" else 200
+                    
+                    # Explicitly pass poppler_path if available
+                    kwargs = {}
+                    if 'POPPLER_PATH' in os.environ and os.environ.get('POPPLER_PATH'):
+                        poppler_path = os.environ.get('POPPLER_PATH')
+                        logger.info(f"Using explicit poppler_path: {poppler_path}")
+                        kwargs['poppler_path'] = poppler_path
+                    
+                    # Log the current PATH environment variable
+                    logger.info(f"Current PATH: {os.environ.get('PATH', '')}")
+                    logger.info(f"Attempting to convert PDF: {pdf_path} with kwargs: {kwargs}")
+                    
+                    # Attempt conversion with explicit parameters
+                    images = convert_from_path(pdf_path, first_page=1, last_page=1, dpi=dpi, **kwargs)
+                    break
+                except Exception as e:
+                    error_msg = str(e)
+                    logger.warning(f"PDF conversion failed (attempt {attempt+1}/{pdf_conversion_retries}). Retrying: {error_msg}")
+                    
+                    # Special handling for macOS permission issues
+                    if "The path does not exist" in error_msg or "not a valid Poppler path" in error_msg:
+                        # Try to find Poppler again
+                        poppler_path = find_poppler_mac()
+                        if poppler_path:
+                            logger.info(f"Found new Poppler path: {poppler_path}")
+                            os.environ['POPPLER_PATH'] = poppler_path
+                            os.environ['PATH'] = f"{poppler_path}{os.pathsep}{os.environ['PATH']}"
+                    
+                    time.sleep(1)
+                    if attempt == pdf_conversion_retries - 1:
+                        logger.error(f"PDF conversion failed after {pdf_conversion_retries} attempts: {error_msg}")
+                        raise
 
         # Encode image to base64
         buffered = io.BytesIO()
