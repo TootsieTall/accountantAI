@@ -73,12 +73,18 @@ def save_failed_list(failed_paths):
     return str(failed_path)
 
 def save_metadata(path, data):
-    """Save metadata JSON file"""
+    """Save metadata JSON file (only in metadata directory)"""
     # Ensure the directory exists
     path.parent.mkdir(parents=True, exist_ok=True)
     
-    # Debug log to see where metadata is being saved
-    print(f"Saving metadata to: {path}")
+    # Log to the logger, not to console
+    logger = logging.getLogger(__name__)
+    logger.info(f"Saving metadata to: {path}")
+    
+    # Make sure we're only saving to metadata directory
+    if not str(path).startswith(str(config.METADATA_DIR)):
+        logger.warning(f"Attempted to save metadata outside of metadata directory: {path}")
+        path = config.METADATA_DIR / path.name
     
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
