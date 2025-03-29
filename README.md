@@ -16,7 +16,9 @@ The application handles most dependencies automatically. Python dependencies are
 
 ### Poppler Installation
 
-The application requires poppler for PDF processing. If you see errors like `Unable to get page count. Is poppler installed and in PATH?`, you need to install poppler:
+The application requires poppler for PDF processing. **When building the application with `npm run package-mac` or `npm run package-win`, Poppler will be installed automatically.**
+
+If you still encounter errors like `Unable to get page count. Is poppler installed and in PATH?`, you can manually install poppler:
 
 #### macOS
 
@@ -103,7 +105,8 @@ To set up for development:
    ```
    pip install -r requirements.txt
    ```
-5. Run the application in development mode:
+5. Install Poppler manually as described above
+6. Run the application in development mode:
    ```
    npm run dev
    ```
@@ -113,10 +116,10 @@ To set up for development:
 To build the application for distribution:
 
 ```bash
-# For macOS
+# For macOS - Will automatically install Poppler
 npm run package-mac
 
-# For Windows
+# For Windows - Will automatically install Poppler
 npm run package-win
 
 # For Linux
