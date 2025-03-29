@@ -5,6 +5,7 @@ import io
 import time
 import subprocess
 import sys
+import shutil
 import platform
 from pathlib import Path
 from pdf2image import convert_from_path
@@ -12,6 +13,31 @@ import anthropic
 import config
 
 logger = logging.getLogger(__name__)
+
+def find_poppler_mac():
+    """Find Poppler installation on macOS"""
+    # Common Homebrew installation paths
+    common_paths = [
+        "/usr/local/bin",  # Intel Macs
+        "/opt/homebrew/bin",  # Apple Silicon
+        "/usr/local/Cellar/poppler/*/bin",
+        "/opt/homebrew/Cellar/poppler/*/bin"
+    ]
+    
+    # Try to find pdftoppm in common locations
+    for path_pattern in common_paths:
+        if '*' in path_pattern:
+            # Handle wildcard paths like /opt/homebrew/Cellar/poppler/*/bin
+            import glob
+            for actual_path in glob.glob(path_pattern):
+                if os.path.exists(os.path.join(actual_path, "pdftoppm")):
+                    return actual_path
+        else:
+            # Handle direct paths
+            if os.path.exists(os.path.join(path_pattern, "pdftoppm")):
+                return path_pattern
+    
+    return None
 
 def check_poppler_installation():
     """Check if poppler is installed and available in PATH"""
@@ -28,10 +54,37 @@ def check_poppler_installation():
             
         # Check system PATH
         if system == "Darwin":  # macOS
-            # Try to locate poppler using which command
-            result = subprocess.run(['which', 'pdftoppm'], capture_output=True, text=True)
-            if result.returncode != 0:
-                return False, "Poppler is not installed. Install it using: brew install poppler"
+            # First try which command
+            try:
+                result = subprocess.run(['which', 'pdftoppm'], capture_output=True, text=True)
+                if result.returncode == 0:
+                    poppler_path = os.path.dirname(result.stdout.strip())
+                    logger.info(f"Found Poppler in PATH: {poppler_path}")
+                    return True, "Poppler is installed and available in PATH"
+            except Exception as e:
+                logger.warning(f"Error checking poppler with 'which': {str(e)}")
+            
+            # Try to find in Homebrew locations
+            poppler_path = find_poppler_mac()
+            if poppler_path:
+                # Add to PATH if not already there
+                if poppler_path not in os.environ['PATH']:
+                    os.environ['PATH'] = f"{poppler_path}{os.pathsep}{os.environ['PATH']}"
+                os.environ['POPPLER_PATH'] = poppler_path
+                logger.info(f"Found Poppler in Homebrew location: {poppler_path}")
+                return True, f"Poppler found at: {poppler_path}"
+                
+            # Last try: check if it's available but not in PATH
+            for binary in ["pdftoppm", "pdfinfo"]:
+                path = shutil.which(binary)
+                if path:
+                    poppler_dir = os.path.dirname(path)
+                    os.environ['POPPLER_PATH'] = poppler_dir
+                    logger.info(f"Found Poppler binary {binary} at: {path}")
+                    return True, f"Poppler found at: {poppler_dir}"
+            
+            return False, "Poppler is not installed or not in PATH. Install using: brew install poppler"
+        
         elif system == "Windows":
             # Check if poppler is in PATH or in standard locations
             if not poppler_path:
@@ -54,14 +107,20 @@ def check_poppler_installation():
                         break
                 if not found:
                     return False, "Poppler is not installed or not in PATH. Download from http://blog.alivate.com.au/poppler-windows/ and add to PATH"
+            
+            return True, "Poppler is installed and available"
+        
         else:  # Linux and others
             result = subprocess.run(['which', 'pdftoppm'], capture_output=True, text=True)
             if result.returncode != 0:
                 return False, "Poppler is not installed. Install it using your package manager (e.g., apt-get install poppler-utils)"
-        
-        return True, "Poppler is installed and available"
+            
+            poppler_path = os.path.dirname(result.stdout.strip())
+            logger.info(f"Found Poppler in PATH: {poppler_path}")
+            return True, "Poppler is installed and available"
     
     except Exception as e:
+        logger.error(f"Error checking poppler installation: {str(e)}")
         return False, f"Error checking poppler installation: {str(e)}"
 
 def process_document(pdf_path):
@@ -91,18 +150,30 @@ def process_document(pdf_path):
                 # On macOS, try to set DPI lower to avoid memory issues
                 dpi = 150 if platform.system() == "Darwin" else 200
                 
-                # Explicitly pass poppler_path if on Windows and we have POPPLER_PATH
+                # Explicitly pass poppler_path if available
                 kwargs = {}
-                if platform.system() == "Windows" and os.environ.get('POPPLER_PATH'):
-                    kwargs['poppler_path'] = os.environ.get('POPPLER_PATH')
+                if 'POPPLER_PATH' in os.environ and os.environ.get('POPPLER_PATH'):
+                    poppler_path = os.environ.get('POPPLER_PATH')
+                    logger.info(f"Using explicit poppler_path: {poppler_path}")
+                    kwargs['poppler_path'] = poppler_path
                 
+                # Log the current PATH environment variable
+                logger.info(f"Current PATH: {os.environ.get('PATH', '')}")
+                logger.info(f"Attempting to convert PDF: {pdf_path} with kwargs: {kwargs}")
+                
+                # Attempt conversion with explicit parameters
                 images = convert_from_path(pdf_path, first_page=1, last_page=1, dpi=dpi, **kwargs)
                 break
             except Exception as e:
-                if attempt < pdf_conversion_retries - 1:
-                    logger.warning(f"PDF conversion failed (attempt {attempt+1}/{pdf_conversion_retries}). Retrying: {str(e)}")
-                    time.sleep(1)
-                else:
+                logger.warning(f"PDF conversion failed (attempt {attempt+1}/{pdf_conversion_retries}). Retrying: {str(e)}")
+                
+                # Check poppler again - it might need to be relocated
+                poppler_installed, message = check_poppler_installation()
+                if not poppler_installed:
+                    logger.error(f"Poppler dependency still not found after retry check: {message}")
+                
+                time.sleep(1)
+                if attempt == pdf_conversion_retries - 1:
                     logger.error(f"PDF conversion failed after {pdf_conversion_retries} attempts: {str(e)}")
                     raise
 
