@@ -9,11 +9,10 @@ DATA_DIR = BASE_DIR / "data"
 # Document directories
 SOURCE_DIR = DATA_DIR / "source_documents"
 PROCESSED_DIR = DATA_DIR / "processed"
-METADATA_DIR = DATA_DIR / "metadata"
 LOG_DIR = DATA_DIR / "logs"
 
 # Ensure directories exist
-for dir_path in [SOURCE_DIR, PROCESSED_DIR, METADATA_DIR, LOG_DIR]:
+for dir_path in [SOURCE_DIR, PROCESSED_DIR, LOG_DIR]:
     dir_path.mkdir(parents=True, exist_ok=True)
 
 # API Settings
