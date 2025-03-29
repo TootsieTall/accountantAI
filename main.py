@@ -8,12 +8,57 @@ import random
 from tqdm import tqdm
 from datetime import datetime
 import platform
+import shutil
+import subprocess
 
 # Add the project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Load environment variables
 load_dotenv()
+
+# POPPLER PATH FORCE-SET SECTION
+# This section ensures Poppler is found on macOS, even in packaged app
+if platform.system() == "Darwin":
+    # Common Homebrew installation paths for Poppler
+    POPPLER_PATHS = [
+        "/opt/homebrew/bin",  # Apple Silicon
+        "/usr/local/bin",      # Intel Macs
+        "/opt/local/bin",      # MacPorts
+        os.path.expanduser("~/homebrew/bin")  # Custom Homebrew
+    ]
+    
+    # Use POPPLER_PATH from .env if available
+    poppler_path = os.environ.get('POPPLER_PATH')
+    if poppler_path and os.path.exists(poppler_path):
+        print(f"Using POPPLER_PATH from environment: {poppler_path}")
+        os.environ['PATH'] = f"{poppler_path}:{os.environ.get('PATH', '')}"
+    else:
+        # Try to find pdftoppm in known locations
+        for path in POPPLER_PATHS:
+            if os.path.exists(os.path.join(path, "pdftoppm")):
+                print(f"Found Poppler at: {path}")
+                os.environ['POPPLER_PATH'] = path
+                os.environ['PATH'] = f"{path}:{os.environ.get('PATH', '')}"
+                break
+    
+    # Double-check if we can find pdftoppm
+    try:
+        result = subprocess.run(['which', 'pdftoppm'], capture_output=True, text=True)
+        if result.returncode == 0:
+            print(f"Verified pdftoppm location: {result.stdout.strip()}")
+        else:
+            print("WARNING: pdftoppm not found in PATH")
+            # Try a more extensive search
+            for root, dirs, files in os.walk('/opt/homebrew'):
+                if 'pdftoppm' in files:
+                    bin_path = os.path.join(root)
+                    print(f"Found pdftoppm in extensive search: {bin_path}")
+                    os.environ['POPPLER_PATH'] = bin_path
+                    os.environ['PATH'] = f"{bin_path}:{os.environ.get('PATH', '')}"
+                    break
+    except Exception as e:
+        print(f"Error checking pdftoppm: {e}")
 
 # Import project modules
 from src.utils import setup_logging, save_checkpoint, load_checkpoint, save_failed_list
