@@ -12,6 +12,8 @@ AccountantAI is a desktop application that processes tax documents using Claude 
 
 ## Dependencies
 
+The application handles most dependencies automatically. Python dependencies are installed when the application starts up.
+
 ### Poppler Installation
 
 The application requires poppler for PDF processing. If you see errors like `Unable to get page count. Is poppler installed and in PATH?`, you need to install poppler:
@@ -44,13 +46,25 @@ Fedora/RHEL:
 sudo dnf install poppler-utils
 ```
 
-### Python Packages
+### Python Dependencies
 
-Required Python packages are listed in requirements.txt. Install them with:
+Python packages are automatically installed during application startup. The application uses the following key packages:
 
-```bash
-pip install -r requirements.txt
-```
+- python-dotenv - Environment variable management
+- anthropic - Claude AI API client
+- tqdm - Progress bar
+- pdf2image - PDF conversion
+- poppler-utils - PDF utilities
+- requests - HTTP client
+- pillow - Image processing
+
+## Setup Instructions
+
+1. Download the packaged application for your OS
+2. Launch the application
+3. Set your Anthropic API key in the settings
+4. Upload documents to process
+5. Start processing
 
 ## Windows Encoding Fix
 
@@ -75,9 +89,39 @@ The fix includes:
    - Attempt to set console code page to UTF-8 (chcp 65001)
    - Added fallback ASCII characters
 
-## Setup
+## Development Setup
 
-See [WINDOWS-SETUP.md](WINDOWS-SETUP.md) for Windows installation instructions.
+To set up for development:
+
+1. Clone the repository
+2. Install Node.js dependencies:
+   ```
+   npm install
+   ```
+3. Make sure Python is installed
+4. Install Python dependencies manually for development:
+   ```
+   pip install -r requirements.txt
+   ```
+5. Run the application in development mode:
+   ```
+   npm run dev
+   ```
+
+## Building for Distribution
+
+To build the application for distribution:
+
+```bash
+# For macOS
+npm run package-mac
+
+# For Windows
+npm run package-win
+
+# For Linux
+npm run package-linux
+```
 
 ## Configuration
 
