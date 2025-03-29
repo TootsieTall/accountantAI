@@ -1,0 +1,84 @@
+{
+  "name": "accountant-ai",
+  "version": "1.0.0",
+  "description": "AI-powered accounting assistant",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --dir",
+    "package-mac": "electron-builder --mac",
+    "package-win": "electron-builder --win",
+    "package-linux": "electron-builder --linux",
+    "dist": "electron-builder"
+  },
+  "author": "Mohammad R",
+  "license": "MIT",
+  "build": {
+    "appId": "com.mohammad.accountantai",
+    "productName": "AccountantAI Uploader",
+    "files": [
+      "**/*",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/.bin",
+      "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+      "!.git",
+      "!**/__pycache__/**"
+    ],
+    "extraResources": [
+      "data/**/*",
+      "src/**/*",
+      "config.py",
+      "main.py",
+      "start-app.bat",
+      "start-app.sh",
+      "requirements.txt"
+    ],
+    "directories": {
+      "buildResources": "assets",
+      "output": "dist"
+    },
+    "mac": {
+      "category": "public.app-category.business",
+      "icon": "assets/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "target": ["dmg", "zip"],
+      "darkModeSupport": true,
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "asarUnpack": [
+        "**/*.node",
+        "**/node_modules/sharp/**/*"
+      ]
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico",
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "publisherName": "Mohammad R"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Office",
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "include": "installer.nsh"
+    }
+  },
+  "dependencies": {
+    "electron-is-dev": "^2.0.0",
+    "tree-kill": "^1.2.2",
+    "dotenv": "^10.0.0"
+  },
+  "devDependencies": {
+    "electron": "^28.1.1",
+    "electron-builder": "^24.9.1"
+  }
+}
