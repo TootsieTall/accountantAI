@@ -72,23 +72,6 @@ def save_failed_list(failed_paths):
     
     return str(failed_path)
 
-def save_metadata(path, data):
-    """Save metadata JSON file (only in metadata directory)"""
-    # Ensure the directory exists
-    path.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Log to the logger, not to console
-    logger = logging.getLogger(__name__)
-    logger.info(f"Saving metadata to: {path}")
-    
-    # Make sure we're only saving to metadata directory
-    if not str(path).startswith(str(config.METADATA_DIR)):
-        logger.warning(f"Attempted to save metadata outside of metadata directory: {path}")
-        path = config.METADATA_DIR / path.name
-    
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2)
-
 def clean_filename(name):
     """Clean a string to be suitable for a filename"""
     if not name:
@@ -110,7 +93,7 @@ def clean_filename(name):
 def ensure_directories():
     """Ensure all required directories exist"""
     # Create base directories
-    for dir_path in [config.SOURCE_DIR, config.PROCESSED_DIR, config.METADATA_DIR, config.LOG_DIR]:
+    for dir_path in [config.SOURCE_DIR, config.PROCESSED_DIR, config.LOG_DIR]:
         dir_path.mkdir(parents=True, exist_ok=True)
         print(f"Ensured directory exists: {dir_path}")
 
