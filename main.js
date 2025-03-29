@@ -204,11 +204,11 @@ app.whenReady().then(async () => {
 
 // Setup application and dependencies
 async function setupApplication() {
-  // Ensure data directories exist
-  const directories = ensureDataDirectories();
+  // Ensure data directories exist first and get the paths
+  const { appDataDir } = ensureDataDirectories();
   
   // Create or update requirements.txt in app data directory
-  const reqPath = path.join(directories.appDataDir, 'requirements.txt');
+  const reqPath = path.join(appDataDir, 'requirements.txt');
   const originalReqPath = isDev 
     ? path.join(__dirname, 'requirements.txt')
     : path.join(process.resourcesPath, 'requirements.txt');
@@ -239,7 +239,7 @@ app.on('activate', function () {
 // Ensure all required directories exist
 function ensureDataDirectories() {
   // Get proper directory paths
-  const { dataDir, sourceDir, processedDir, metadataDir, logsDir } = getDataDirectories();
+  const { appDataDir, dataDir, sourceDir, processedDir, metadataDir, logsDir } = getDataDirectories();
   
   // Create directories
   [dataDir, sourceDir, processedDir, metadataDir, logsDir].forEach(dir => {
@@ -257,7 +257,7 @@ function ensureDataDirectories() {
     fs.writeFileSync(envPath, envContent);
   }
   
-  return { dataDir, sourceDir, processedDir, metadataDir, logsDir };
+  return { appDataDir, dataDir, sourceDir, processedDir, metadataDir, logsDir };
 }
 
 // Get the path to the .env file
