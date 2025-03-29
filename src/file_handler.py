@@ -84,7 +84,7 @@ def organize_document(pdf_path, document_data, client_folder_name=None):
         logger.info(f"File copied successfully: {dest_path}")
 
         # Create metadata file - Store this in a separate metadata folder instead of the results folder
-        metadata_dir = config.DATA_DIR / "metadata"
+        metadata_dir = config.METADATA_DIR  # Use the METADATA_DIR from config
         metadata_dir.mkdir(parents=True, exist_ok=True)
         
         # Keep the same relative path structure but in the metadata directory
@@ -95,6 +95,7 @@ def organize_document(pdf_path, document_data, client_folder_name=None):
         # Create directory structure for metadata file
         metadata_path.parent.mkdir(parents=True, exist_ok=True)
         
+        # Save metadata to metadata directory only, not in processed directory
         save_metadata(metadata_path, document_data)
         logger.info(f"Metadata saved to: {metadata_path}")
         
