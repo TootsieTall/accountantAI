@@ -13,6 +13,9 @@ from pdf2image import convert_from_path
 import anthropic
 import config
 
+# Import our direct PDF converter
+from src.direct_pdf_converter import convert_pdf_to_image
+
 logger = logging.getLogger(__name__)
 
 def find_poppler_mac():
@@ -174,72 +177,75 @@ def process_document(pdf_path):
         dict: Extracted document data
     """
     try:
-        # Check poppler installation first
+        # Check poppler installation
         poppler_installed, message = check_poppler_installation()
-        if not poppler_installed:
-            logger.error(f"Poppler dependency error: {message}")
-            raise Exception(f"PDF processing dependency not found: {message}")
-
-        # Convert PDF to image with retries
+        logger.info(f"Poppler installation check: {poppler_installed}, {message}")
+        
+        # Convert PDF to image
         logger.info(f"Converting PDF to image: {pdf_path}")
         images = None
-        pdf_conversion_retries = 3
-
-        # First try a direct approach for macOS
-        if platform.system() == "Darwin":
+        
+        # Try multiple approaches in order of preference
+        approaches = [
+            "direct_converter",  # Our bundled converter
+            "pdf2image",         # Standard library with explicit poppler_path
+            "command_line"       # Direct command line 
+        ]
+        
+        error_messages = []
+        
+        for approach in approaches:
             try:
-                # Try direct command line approach first
-                tmp_output = "/tmp/pdf_page.png"
-                cmd = ["pdftoppm", "-png", "-singlefile", "-f", "1", "-l", "1", str(pdf_path), "/tmp/pdf_page"]
-                logger.info(f"Running direct command: {' '.join(cmd)}")
+                logger.info(f"Trying approach: {approach}")
                 
-                subprocess.run(cmd, check=True, capture_output=True)
+                if approach == "direct_converter":
+                    # Use our direct converter that doesn't rely on environment variables
+                    images = convert_pdf_to_image(pdf_path, dpi=150)
+                    if images:
+                        logger.info("Direct converter succeeded")
+                        break
                 
-                if os.path.exists(tmp_output):
-                    from PIL import Image
-                    logger.info(f"Direct conversion succeeded: {tmp_output}")
-                    images = [Image.open(tmp_output)]
-            except Exception as e:
-                logger.warning(f"Direct conversion failed: {e}")
-
-        # If direct approach failed or not on macOS, try the standard library
-        if not images:
-            for attempt in range(pdf_conversion_retries):
-                try:
-                    # On macOS, try to set DPI lower to avoid memory issues
-                    dpi = 150 if platform.system() == "Darwin" else 200
-                    
-                    # Explicitly pass poppler_path if available
+                elif approach == "pdf2image":
+                    # Try standard pdf2image approach with explicit poppler_path
                     kwargs = {}
-                    if 'POPPLER_PATH' in os.environ and os.environ.get('POPPLER_PATH'):
-                        poppler_path = os.environ.get('POPPLER_PATH')
-                        logger.info(f"Using explicit poppler_path: {poppler_path}")
-                        kwargs['poppler_path'] = poppler_path
+                    if os.environ.get('POPPLER_PATH'):
+                        kwargs['poppler_path'] = os.environ.get('POPPLER_PATH')
                     
-                    # Log the current PATH environment variable
-                    logger.info(f"Current PATH: {os.environ.get('PATH', '')}")
-                    logger.info(f"Attempting to convert PDF: {pdf_path} with kwargs: {kwargs}")
-                    
-                    # Attempt conversion with explicit parameters
+                    dpi = 150 if platform.system() == "Darwin" else 200
                     images = convert_from_path(pdf_path, first_page=1, last_page=1, dpi=dpi, **kwargs)
-                    break
-                except Exception as e:
-                    error_msg = str(e)
-                    logger.warning(f"PDF conversion failed (attempt {attempt+1}/{pdf_conversion_retries}). Retrying: {error_msg}")
+                    if images:
+                        logger.info("pdf2image succeeded")
+                        break
+                
+                elif approach == "command_line":
+                    # Try direct command line approach
+                    tmp_output = "/tmp/pdf_page.png"
+                    pdftoppm_path = "pdftoppm"  # Try to use from PATH
                     
-                    # Special handling for macOS permission issues
-                    if "The path does not exist" in error_msg or "not a valid Poppler path" in error_msg:
-                        # Try to find Poppler again
-                        poppler_path = find_poppler_mac()
-                        if poppler_path:
-                            logger.info(f"Found new Poppler path: {poppler_path}")
-                            os.environ['POPPLER_PATH'] = poppler_path
-                            os.environ['PATH'] = f"{poppler_path}{os.pathsep}{os.environ['PATH']}"
+                    # Use POPPLER_PATH if available
+                    if os.environ.get('POPPLER_PATH'):
+                        pdftoppm_path = os.path.join(os.environ.get('POPPLER_PATH'), "pdftoppm")
                     
-                    time.sleep(1)
-                    if attempt == pdf_conversion_retries - 1:
-                        logger.error(f"PDF conversion failed after {pdf_conversion_retries} attempts: {error_msg}")
-                        raise
+                    cmd = [pdftoppm_path, "-png", "-singlefile", "-f", "1", "-l", "1", str(pdf_path), "/tmp/pdf_page"]
+                    subprocess.run(cmd, check=True)
+                    
+                    if os.path.exists(tmp_output):
+                        from PIL import Image
+                        images = [Image.open(tmp_output)]
+                        logger.info("Command line approach succeeded")
+                        break
+            
+            except Exception as e:
+                error_msg = str(e)
+                error_messages.append(f"Approach '{approach}' failed: {error_msg}")
+                logger.warning(f"Approach '{approach}' failed: {error_msg}")
+                continue
+        
+        # Raise error if all approaches failed
+        if not images:
+            error_msg = "All PDF conversion approaches failed: " + "; ".join(error_messages)
+            logger.error(error_msg)
+            raise Exception(error_msg)
 
         # Encode image to base64
         buffered = io.BytesIO()
