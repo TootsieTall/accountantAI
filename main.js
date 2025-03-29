@@ -60,6 +60,68 @@ function getDataDirectories() {
   };
 }
 
+// Function to install Python dependencies
+async function installPythonDependencies() {
+  return new Promise((resolve, reject) => {
+    console.log('Checking and installing Python dependencies...');
+    
+    // Get the requirements.txt path in the app data directory
+    const { appDataDir } = getDataDirectories();
+    const reqPath = path.join(appDataDir, 'requirements.txt');
+    
+    // Check if requirements.txt exists, copy from resources if not
+    if (!fs.existsSync(reqPath)) {
+      const originalReqPath = isDev 
+        ? path.join(__dirname, 'requirements.txt')
+        : path.join(process.resourcesPath, 'requirements.txt');
+      
+      if (fs.existsSync(originalReqPath)) {
+        console.log(`Copying requirements.txt from ${originalReqPath} to ${reqPath}`);
+        fs.copyFileSync(originalReqPath, reqPath);
+      } else {
+        console.error('Could not find requirements.txt in resources');
+        reject(new Error('Could not find requirements.txt'));
+        return;
+      }
+    }
+    
+    // Determine correct pip executable based on platform
+    let pipExecutable;
+    if (process.platform === 'darwin') {
+      pipExecutable = 'pip3';
+    } else if (process.platform === 'win32') {
+      pipExecutable = 'pip';
+    } else {
+      pipExecutable = 'pip3';
+    }
+    
+    console.log(`Using pip executable: ${pipExecutable}`);
+    console.log(`Installing dependencies from: ${reqPath}`);
+    
+    // Run pip install command
+    const pipProcess = spawn(pipExecutable, ['install', '-r', reqPath]);
+    
+    pipProcess.stdout.on('data', (data) => {
+      console.log(`pip stdout: ${data.toString()}`);
+    });
+    
+    pipProcess.stderr.on('data', (data) => {
+      console.error(`pip stderr: ${data.toString()}`);
+    });
+    
+    pipProcess.on('close', (code) => {
+      if (code === 0) {
+        console.log('Python dependencies installed successfully');
+        resolve(true);
+      } else {
+        console.error(`pip process exited with code ${code}`);
+        // We'll continue even if pip fails, just log the error
+        resolve(false);
+      }
+    });
+  });
+}
+
 function createWindow() {
   // Skip window creation when initializing directories
   if (isInitializingDirectories) {
@@ -122,7 +184,7 @@ function createWindow() {
 }
 
 // Initialize app
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (isInitializingDirectories) {
     // Run the directory initialization
     console.log("Initializing data directories...");
@@ -135,9 +197,35 @@ app.whenReady().then(() => {
     }, 1000);
   } else {
     // Normal application startup
+    await setupApplication();
     createWindow();
   }
 });
+
+// Setup application and dependencies
+async function setupApplication() {
+  // Ensure data directories exist
+  const directories = ensureDataDirectories();
+  
+  // Create or update requirements.txt in app data directory
+  const reqPath = path.join(directories.appDataDir, 'requirements.txt');
+  const originalReqPath = isDev 
+    ? path.join(__dirname, 'requirements.txt')
+    : path.join(process.resourcesPath, 'requirements.txt');
+  
+  if (fs.existsSync(originalReqPath)) {
+    console.log(`Copying requirements.txt from ${originalReqPath} to ${reqPath}`);
+    fs.copyFileSync(originalReqPath, reqPath);
+  }
+  
+  // Install Python dependencies
+  try {
+    await installPythonDependencies();
+  } catch (error) {
+    console.error('Error installing Python dependencies:', error);
+    // Continue anyway - the user will get an error when they try to process
+  }
+}
 
 // Quit when all windows are closed, except on macOS
 app.on('window-all-closed', function () {
@@ -373,6 +461,14 @@ async function startPythonProcess(clientName = '', options = {}) {
       };
     }
     
+    // Make sure Python dependencies are installed
+    try {
+      await installPythonDependencies();
+    } catch (error) {
+      console.error('Error installing Python dependencies:', error);
+      // Continue anyway - we'll see if the process can still run
+    }
+    
     // Set environment variables for the Python process
     const env = {
       ...process.env,
@@ -394,7 +490,9 @@ async function startPythonProcess(clientName = '', options = {}) {
     // We need to make sure we have access to the main.py file
     // Copy main.py and other necessary files to the app data directory if they don't exist
     const appDataPyPath = path.join(appDataDir, 'main.py');
-    const originalPyPath = path.join(__dirname, 'main.py');
+    const originalPyPath = isDev
+      ? path.join(__dirname, 'main.py')
+      : path.join(process.resourcesPath, 'main.py');
     
     // Copy the Python scripts if they don't exist in the app data directory
     if (!fs.existsSync(appDataPyPath)) {
@@ -403,7 +501,9 @@ async function startPythonProcess(clientName = '', options = {}) {
         fs.copyFileSync(originalPyPath, appDataPyPath);
         
         // Also copy the src directory if it exists
-        const srcDir = path.join(__dirname, 'src');
+        const srcDir = isDev
+          ? path.join(__dirname, 'src')
+          : path.join(process.resourcesPath, 'src');
         const appDataSrcDir = path.join(appDataDir, 'src');
         
         if (fs.existsSync(srcDir)) {
@@ -425,7 +525,9 @@ async function startPythonProcess(clientName = '', options = {}) {
         }
         
         // Copy config.py if it exists
-        const configPath = path.join(__dirname, 'config.py');
+        const configPath = isDev
+          ? path.join(__dirname, 'config.py')
+          : path.join(process.resourcesPath, 'config.py');
         const appDataConfigPath = path.join(appDataDir, 'config.py');
         
         if (fs.existsSync(configPath)) {
