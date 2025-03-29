@@ -17,6 +17,16 @@ def check_poppler_installation():
     """Check if poppler is installed and available in PATH"""
     system = platform.system()
     try:
+        # Check for POPPLER_PATH environment variable first
+        poppler_path = os.environ.get('POPPLER_PATH')
+        if poppler_path and os.path.exists(poppler_path):
+            # Add to PATH if not already there
+            if poppler_path not in os.environ['PATH']:
+                os.environ['PATH'] = f"{poppler_path}{os.pathsep}{os.environ['PATH']}"
+            logger.info(f"Using Poppler from POPPLER_PATH: {poppler_path}")
+            return True, "Poppler is installed and available via POPPLER_PATH"
+            
+        # Check system PATH
         if system == "Darwin":  # macOS
             # Try to locate poppler using which command
             result = subprocess.run(['which', 'pdftoppm'], capture_output=True, text=True)
@@ -24,19 +34,22 @@ def check_poppler_installation():
                 return False, "Poppler is not installed. Install it using: brew install poppler"
         elif system == "Windows":
             # Check if poppler is in PATH or in standard locations
-            poppler_path = os.environ.get('POPPLER_PATH')
             if not poppler_path:
                 # Try to find poppler in common locations
                 common_paths = [
                     os.path.join(os.path.expanduser('~'), 'poppler', 'bin'),
-                    r'C:\Program Files\poppler\bin',
-                    r'C:\Program Files (x86)\poppler\bin',
-                    r'C:\poppler\bin'
+                    r'C:\\Program Files\\poppler\\bin',
+                    r'C:\\Program Files (x86)\\poppler\\bin',
+                    r'C:\\poppler\\bin'
                 ]
                 found = False
                 for path in common_paths:
                     if os.path.exists(path) and os.path.exists(os.path.join(path, 'pdftoppm.exe')):
                         os.environ['POPPLER_PATH'] = path
+                        # Add to PATH if not already there
+                        if path not in os.environ['PATH']:
+                            os.environ['PATH'] = f"{path}{os.pathsep}{os.environ['PATH']}"
+                        logger.info(f"Found Poppler in: {path}")
                         found = True
                         break
                 if not found:
@@ -77,14 +90,20 @@ def process_document(pdf_path):
             try:
                 # On macOS, try to set DPI lower to avoid memory issues
                 dpi = 150 if platform.system() == "Darwin" else 200
-                images = convert_from_path(pdf_path, first_page=1, last_page=1, dpi=dpi)
+                
+                # Explicitly pass poppler_path if on Windows and we have POPPLER_PATH
+                kwargs = {}
+                if platform.system() == "Windows" and os.environ.get('POPPLER_PATH'):
+                    kwargs['poppler_path'] = os.environ.get('POPPLER_PATH')
+                
+                images = convert_from_path(pdf_path, first_page=1, last_page=1, dpi=dpi, **kwargs)
                 break
             except Exception as e:
                 if attempt < pdf_conversion_retries - 1:
                     logger.warning(f"PDF conversion failed (attempt {attempt+1}/{pdf_conversion_retries}). Retrying: {str(e)}")
                     time.sleep(1)
                 else:
-                    logger.error(f"PDF conversion failed after {pdf_conversion_retries} attempts")
+                    logger.error(f"PDF conversion failed after {pdf_conversion_retries} attempts: {str(e)}")
                     raise
 
         # Encode image to base64
