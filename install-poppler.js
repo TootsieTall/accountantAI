@@ -34,6 +34,31 @@ function downloadFile(url, dest) {
   });
 }
 
+// Run Python Poppler finder script
+function runPopplerFinder() {
+  try {
+    console.log('Running Poppler finder script to ensure proper configuration...');
+    
+    // Determine Python executable
+    let pythonExecutable;
+    if (platform === 'darwin') {
+      pythonExecutable = 'python3';
+    } else if (platform === 'win32') {
+      pythonExecutable = 'python';
+    } else {
+      pythonExecutable = 'python3';
+    }
+    
+    // Run the script
+    execSync(`${pythonExecutable} find-poppler.py`, { stdio: 'inherit' });
+    console.log('Poppler finder script completed successfully.');
+    return true;
+  } catch (error) {
+    console.error('Error running Poppler finder script:', error.message);
+    return false;
+  }
+}
+
 async function installPopplerMac() {
   try {
     // Check if brew is installed
@@ -68,6 +93,10 @@ async function installPopplerMac() {
         process.exit(1);
       }
     }
+    
+    // Run the Poppler finder script
+    runPopplerFinder();
+    
   } catch (error) {
     console.error('Error installing Poppler:', error.message);
     process.exit(1);
@@ -114,6 +143,10 @@ async function installPopplerWindows() {
     
     console.log('Poppler installed successfully to:', popplerDir);
     console.log('Poppler binary directory added to PATH.');
+    
+    // Run the Poppler finder script
+    runPopplerFinder();
+    
   } catch (error) {
     console.error('Error installing Poppler:', error.message);
     console.log('Please install Poppler manually from: http://blog.alivate.com.au/poppler-windows/');
@@ -163,6 +196,9 @@ async function main() {
     console.log('Please install Poppler manually:');
     console.log('- Ubuntu/Debian: sudo apt-get install poppler-utils');
     console.log('- Fedora/RHEL: sudo dnf install poppler-utils');
+    
+    // Still try to run the finder script
+    runPopplerFinder();
   }
   
   console.log('Poppler dependency check completed.');
