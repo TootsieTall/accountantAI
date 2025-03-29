@@ -7,10 +7,11 @@
     "start": "electron .",
     "dev": "electron . --dev",
     "build": "electron-builder --dir",
-    "package-mac": "electron-builder --mac",
-    "package-win": "electron-builder --win",
+    "prepackage": "node install-poppler.js",
+    "package-mac": "npm run prepackage && electron-builder --mac",
+    "package-win": "npm run prepackage && electron-builder --win",
     "package-linux": "electron-builder --linux",
-    "dist": "electron-builder"
+    "dist": "npm run prepackage && electron-builder"
   },
   "author": "Mohammad R",
   "license": "MIT",
@@ -75,7 +76,9 @@
   "dependencies": {
     "electron-is-dev": "^2.0.0",
     "tree-kill": "^1.2.2",
-    "dotenv": "^10.0.0"
+    "dotenv": "^10.0.0",
+    "adm-zip": "^0.5.10",
+    "rimraf": "^5.0.1"
   },
   "devDependencies": {
     "electron": "^28.1.1",
