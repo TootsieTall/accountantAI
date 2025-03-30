@@ -5,8 +5,29 @@ from pathlib import Path
 import logging
 import config
 from src.utils import clean_filename
+import platform
 
 logger = logging.getLogger(__name__)
+
+# Define safe symbols for different platforms
+def get_arrow_symbol():
+    """Get appropriate arrow symbol based on platform and encoding support"""
+    if platform.system() != "Windows":
+        return "→"
+    
+    try:
+        # Check if console supports UTF-8
+        import sys
+        if sys.stdout.encoding.lower() == 'utf-8':
+            return "→"
+    except:
+        pass
+    
+    # Fallback for Windows
+    return "->"
+
+# Get arrow symbol
+ARROW_SYMBOL = get_arrow_symbol()
 
 def get_source_documents():
     """Get all PDF files from source directory"""
@@ -76,8 +97,8 @@ def organize_document(pdf_path, document_data, client_folder_name=None):
         new_filename = f"{client_clean}_{doc_type_clean}_{period}.pdf"
         dest_path = client_dir / new_filename
         
-        # Log the paths for debugging
-        logger.info(f"Source path: {pdf_path}, Destination path: {dest_path}")
+        # Log the paths for debugging - use safe arrow symbol that works on Windows
+        logger.info(f"Organized document: {pdf_path} {ARROW_SYMBOL} {dest_path}")
 
         # Copy the file with more retry attempts
         safe_copy_file(pdf_path, dest_path, max_retries=5)
