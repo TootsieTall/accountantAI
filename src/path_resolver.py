@@ -106,6 +106,7 @@ def resolve_poppler_path():
     elif platform.system() == "Windows":
         common_paths = [
             os.path.join(os.path.expanduser('~'), 'poppler', 'bin'),
+            r'C:\Program Files\poppler\Library\bin',  # Updated path
             r'C:\Program Files\poppler\bin',
             r'C:\Program Files (x86)\poppler\bin',
             r'C:\poppler\bin',
