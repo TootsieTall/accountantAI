@@ -7,11 +7,14 @@
     "start": "electron .",
     "dev": "electron . --dev",
     "build": "electron-builder --dir",
-    "prepackage": "node install-poppler.js",
-    "package-mac": "npm run prepackage && electron-builder --mac",
-    "package-win": "npm run prepackage && electron-builder --win",
+    "install-poppler": "node install-poppler.js",
+    "package-mac": "electron-builder --mac",
+    "package-win": "electron-builder --win",
     "package-linux": "electron-builder --linux",
-    "dist": "npm run prepackage && electron-builder"
+    "package-mac-with-poppler": "node install-poppler.js && electron-builder --mac",
+    "package-win-with-poppler": "node install-poppler.js && electron-builder --win",
+    "package-linux-with-poppler": "node install-poppler.js && electron-builder --linux", 
+    "dist": "electron-builder"
   },
   "author": "Mohammad R",
   "license": "MIT",
