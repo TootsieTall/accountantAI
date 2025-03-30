@@ -15,20 +15,27 @@ import io
 # Add the project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Fix console encoding issues in Windows
-if platform.system() == "Windows":
-    # Try to configure console for Unicode output
+# Force Windows to use ASCII symbols only - no UTF-8 configuration attempt
+# This is the most reliable solution for Windows console encoding issues
+SYMBOLS = {
+    'success': "[OK]",
+    'error': "[X]",
+    'warning': "[!]",
+    'arrow': "->"
+}
+
+# Only try UTF-8 configuration on non-Windows platforms
+if platform.system() != "Windows":
     try:
-        import ctypes
-        # Set console code page to UTF-8
-        ctypes.windll.kernel32.SetConsoleCP(65001)
-        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
-        # Force UTF-8 for stdout
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='backslashreplace')
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='backslashreplace')
-    except Exception as e:
-        # If UTF-8 doesn't work, we'll fall back to ASCII symbols later
-        print(f"Warning: Could not set UTF-8 encoding for console: {str(e)}")
+        # Use Unicode symbols on non-Windows platforms
+        SYMBOLS = {
+            'success': "✓",
+            'error': "✗",
+            'warning': "⚠",
+            'arrow': "→"
+        }
+    except:
+        pass  # Keep ASCII fallbacks if anything fails
 
 # Load environment variables
 load_dotenv()
@@ -48,42 +55,6 @@ from src.utils import setup_logging, save_checkpoint, load_checkpoint, save_fail
 from src.file_handler import get_source_documents, organize_document
 from src.ai_processor import process_document, check_poppler_installation
 import config
-
-# Define safe alternative symbols for different platforms
-def get_symbols():
-    """Get appropriate symbols based on platform and encoding support"""
-    if platform.system() != "Windows":
-        # Use Unicode symbols on non-Windows platforms
-        return {
-            'success': "✓",
-            'error': "✗",
-            'warning': "⚠",
-            'arrow': "→"
-        }
-    
-    try:
-        # Test if console can handle Unicode
-        if sys.stdout.encoding.lower() == 'utf-8':
-            # Windows with UTF-8 support
-            return {
-                'success': "✓",
-                'error': "✗",
-                'warning': "⚠",
-                'arrow': "→"
-            }
-    except:
-        pass
-    
-    # Fallback to ASCII alternatives for Windows
-    return {
-        'success': "[OK]",
-        'error': "[X]",
-        'warning': "[!]",
-        'arrow': "->"
-    }
-
-# Get the appropriate symbols
-SYMBOLS = get_symbols()
 
 def main():
     """Main entry point for the tax document processor"""
