@@ -15,27 +15,13 @@ import io
 # Add the project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Force Windows to use ASCII symbols only - no UTF-8 configuration attempt
-# This is the most reliable solution for Windows console encoding issues
+# Force Windows to use ASCII symbols only
 SYMBOLS = {
     'success': "[OK]",
     'error': "[X]",
     'warning': "[!]",
     'arrow': "->"
 }
-
-# Only try UTF-8 configuration on non-Windows platforms
-if platform.system() != "Windows":
-    try:
-        # Use Unicode symbols on non-Windows platforms
-        SYMBOLS = {
-            'success': "✓",
-            'error': "✗",
-            'warning': "⚠",
-            'arrow': "→"
-        }
-    except:
-        pass  # Keep ASCII fallbacks if anything fails
 
 # Load environment variables
 load_dotenv()
@@ -194,7 +180,7 @@ def main():
                     pbar.update(1)
 
                     # Save checkpoint every 5 documents
-                    if len(newly_processed) % 5 == 0:
+                    if len(newly_processed) % 5 == 0 and newly_processed:
                         save_checkpoint(list(processed_paths))
 
                     # Add small random delay between documents (100-300ms)
@@ -239,4 +225,15 @@ def main():
     logger.info(f"Processing complete. Success: {results['success']}, Retry Success: {results['retry_success']}, Failed: {results['failed']}")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        # Use ASCII symbols for any final error messages
+        print(f"[FATAL ERROR] The application encountered an unexpected error: {str(e)}")
+        # Log it if possible
+        try:
+            import logging
+            logging.error(f"Fatal error: {str(e)}")
+        except:
+            pass
+        sys.exit(1)
