@@ -130,11 +130,28 @@ body {
   transition: all 0.3s;
   background-color: #f9f9f9;
   cursor: pointer;
+  /* Fix for Windows drag and drop */
+  pointer-events: auto !important;
+}
+
+/* Make sure the body and document have pointer events enabled for drag and drop */
+html, body {
+  pointer-events: auto !important;
 }
 
 .drop-area.active {
   border-color: #3498db;
   background-color: #ebf5fb;
+}
+
+.drop-area::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: -1;
 }
 
 .drop-icon {
@@ -152,6 +169,12 @@ body {
 .drop-subtext {
   font-size: 14px;
   color: #777;
+}
+
+.browse-link {
+  color: #3498db;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .imported-files {
@@ -495,6 +518,22 @@ body {
   cursor: not-allowed;
 }
 
+.secondary-btn {
+  background-color: #95a5a6;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  transition: background-color 0.3s;
+}
+
+.secondary-btn:hover {
+  background-color: #7f8c8d;
+}
+
 /* Status Area */
 .status-area {
   padding: 15px;
@@ -613,4 +652,37 @@ body {
   padding: 20px;
   text-align: center;
   color: #3498db;
+}
+
+/* Processing Log Styles */
+.processing-log {
+  height: 200px;
+  overflow-y: auto;
+  border: 1px solid #eee;
+  padding: 10px;
+  margin-bottom: 20px;
+  font-family: monospace;
+  font-size: 12px;
+  background-color: #f9f9f9;
+}
+
+.log-entry {
+  margin-bottom: 5px;
+  line-height: 1.4;
+}
+
+.log-entry.info {
+  color: #333;
+}
+
+.log-entry.success {
+  color: #27ae60;
+}
+
+.log-entry.error {
+  color: #e74c3c;
+}
+
+.log-entry.warning {
+  color: #f39c12;
 }
