@@ -10,9 +10,25 @@ from datetime import datetime
 import platform
 import shutil
 import subprocess
+import io
 
 # Add the project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Fix console encoding issues in Windows
+if platform.system() == "Windows":
+    # Try to configure console for Unicode output
+    try:
+        import ctypes
+        # Set console code page to UTF-8
+        ctypes.windll.kernel32.SetConsoleCP(65001)
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+        # Force UTF-8 for stdout
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='backslashreplace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='backslashreplace')
+    except Exception as e:
+        # If UTF-8 doesn't work, we'll fall back to ASCII symbols later
+        print(f"Warning: Could not set UTF-8 encoding for console: {str(e)}")
 
 # Load environment variables
 load_dotenv()
@@ -32,6 +48,42 @@ from src.utils import setup_logging, save_checkpoint, load_checkpoint, save_fail
 from src.file_handler import get_source_documents, organize_document
 from src.ai_processor import process_document, check_poppler_installation
 import config
+
+# Define safe alternative symbols for different platforms
+def get_symbols():
+    """Get appropriate symbols based on platform and encoding support"""
+    if platform.system() != "Windows":
+        # Use Unicode symbols on non-Windows platforms
+        return {
+            'success': "✓",
+            'error': "✗",
+            'warning': "⚠",
+            'arrow': "→"
+        }
+    
+    try:
+        # Test if console can handle Unicode
+        if sys.stdout.encoding.lower() == 'utf-8':
+            # Windows with UTF-8 support
+            return {
+                'success': "✓",
+                'error': "✗",
+                'warning': "⚠",
+                'arrow': "→"
+            }
+    except:
+        pass
+    
+    # Fallback to ASCII alternatives for Windows
+    return {
+        'success': "[OK]",
+        'error': "[X]",
+        'warning': "[!]",
+        'arrow': "->"
+    }
+
+# Get the appropriate symbols
+SYMBOLS = get_symbols()
 
 def main():
     """Main entry point for the tax document processor"""
@@ -146,7 +198,7 @@ def main():
 
                                 # Display success info
                                 client_name = client_folder_name or document_data.get('client_name', 'Unknown')
-                                print(f"[SUCCESS] Successfully processed: {pdf_path.name}")
+                                print(f"{SYMBOLS['success']} Successfully processed: {pdf_path.name}")
                                 print(f"  • Document type: {document_data.get('document_type')}")
                                 print(f"  • Recipient: {document_data.get('client_name')}")
                                 print(f"  • Tax year: {document_data.get('period_year')}")
@@ -159,11 +211,11 @@ def main():
                             if retry_count < config.MAX_RETRIES:
                                 wait_time = retry_count * 2  # Exponential backoff
                                 logger.warning(f"Retry {retry_count}/{config.MAX_RETRIES} for {pdf_path} after {wait_time}s: {str(e)}")
-                                print(f"[WARNING] Retrying ({retry_count}/{config.MAX_RETRIES}) after {wait_time}s: {str(e)}")
+                                print(f"{SYMBOLS['warning']} Retrying ({retry_count}/{config.MAX_RETRIES}) after {wait_time}s: {str(e)}")
                                 time.sleep(wait_time)
                             else:
                                 logger.error(f"Failed after {config.MAX_RETRIES} attempts: {pdf_path}: {str(e)}")
-                                print(f"[ERROR] Failed after {config.MAX_RETRIES} attempts: {str(e)}")
+                                print(f"{SYMBOLS['error']} Failed after {config.MAX_RETRIES} attempts: {str(e)}")
                                 results['failed'] += 1
                                 failed_docs.append(str(pdf_path))
 
@@ -180,7 +232,7 @@ def main():
                 except Exception as e:
                     results['failed'] += 1
                     logger.error(f"Unexpected error processing {pdf_path}: {str(e)}")
-                    print(f"[ERROR] Error: {str(e)}")
+                    print(f"{SYMBOLS['error']} Error: {str(e)}")
                     failed_docs.append(str(pdf_path))
                     pbar.update(1)
 
