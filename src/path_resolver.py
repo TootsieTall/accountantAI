@@ -33,6 +33,18 @@ def get_app_path():
         # Running in development mode
         return Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+def normalize_path(path_str):
+    """
+    Normalize path to handle platform-specific differences
+    """
+    # Use os.path.normpath to get platform-specific normalization
+    normalized = os.path.normpath(path_str)
+    
+    # Convert to Path object for consistency
+    path_obj = Path(normalized)
+    
+    return str(path_obj)
+
 def resolve_poppler_path():
     """
     Resolve Poppler path for both development and production environments
@@ -41,7 +53,7 @@ def resolve_poppler_path():
     # Priority 1: Environment variable (set explicitly)
     if 'POPPLER_PATH' in os.environ and os.path.exists(os.environ['POPPLER_PATH']):
         logger.info(f"Using POPPLER_PATH from environment: {os.environ['POPPLER_PATH']}")
-        return os.environ['POPPLER_PATH']
+        return normalize_path(os.environ['POPPLER_PATH'])
     
     # Priority 2: Check for bundled poppler in the app's vendor directory
     app_path = get_app_path()
@@ -60,7 +72,7 @@ def resolve_poppler_path():
                 config = json.load(f)
                 if 'path' in config and os.path.exists(config['path']):
                     logger.info(f"Using Poppler path from config: {config['path']}")
-                    return config['path']
+                    return normalize_path(config['path'])
         except Exception as e:
             logger.warning(f"Error reading poppler config: {e}")
     
@@ -84,12 +96,12 @@ def resolve_poppler_path():
             matches = sorted(glob.glob(pattern), reverse=True)  # Newest version first
             if matches:
                 logger.info(f"Using Poppler from Homebrew Cellar: {matches[0]}")
-                return matches[0]
+                return normalize_path(matches[0])
         
         for path in common_paths:
             if os.path.exists(os.path.join(path, "pdftoppm")):
                 logger.info(f"Using Poppler from common path: {path}")
-                return path
+                return normalize_path(path)
                 
     elif platform.system() == "Windows":
         common_paths = [
@@ -100,9 +112,10 @@ def resolve_poppler_path():
         ]
         
         for path in common_paths:
-            if os.path.exists(os.path.join(path, 'pdftoppm.exe')):
+            pdftoppm_exe = os.path.join(path, 'pdftoppm.exe')
+            if os.path.exists(pdftoppm_exe):
                 logger.info(f"Using Poppler from common path: {path}")
-                return path
+                return normalize_path(path)
     else:  # Linux
         common_paths = [
             "/usr/bin",
@@ -113,7 +126,7 @@ def resolve_poppler_path():
         for path in common_paths:
             if os.path.exists(os.path.join(path, "pdftoppm")):
                 logger.info(f"Using Poppler from common path: {path}")
-                return path
+                return normalize_path(path)
     
     # Priority 4: Try to find using command
     try:
@@ -122,9 +135,16 @@ def resolve_poppler_path():
             if result.returncode == 0:
                 path = os.path.dirname(result.stdout.strip())
                 logger.info(f"Found Poppler using 'which': {path}")
-                return path
-    except Exception:
-        pass
+                return normalize_path(path)
+        else: 
+            # For Windows, try to find in PATH
+            for path_dir in os.environ.get('PATH', '').split(os.pathsep):
+                pdftoppm_exe = os.path.join(path_dir, 'pdftoppm.exe')
+                if os.path.exists(pdftoppm_exe):
+                    logger.info(f"Found Poppler in PATH: {path_dir}")
+                    return normalize_path(path_dir)
+    except Exception as e:
+        logger.warning(f"Error finding Poppler with which/PATH: {e}")
     
     # Failed to find Poppler
     logger.warning("Failed to find Poppler path")
@@ -138,8 +158,9 @@ def setup_poppler_path():
     poppler_path = resolve_poppler_path()
     
     if not poppler_path:
-        logger.error("Poppler not found")
-        return False
+        logger.warning("Poppler not found - will continue without it and use fallbacks")
+        # Don't fail - just let it continue, our fallbacks will handle it
+        return True
     
     # Set environment variables
     os.environ['POPPLER_PATH'] = poppler_path
@@ -153,8 +174,8 @@ def setup_poppler_path():
     pdftoppm_path = os.path.join(poppler_path, pdftoppm_name)
     
     if not os.path.exists(pdftoppm_path):
-        logger.error(f"pdftoppm not found at expected path: {pdftoppm_path}")
-        return False
+        logger.warning(f"pdftoppm not found at expected path: {pdftoppm_path}")
+        return True  # Don't fail - our fallbacks will handle it
     
     logger.info(f"Successfully set up Poppler path: {poppler_path}")
     return True
