@@ -9,25 +9,8 @@ import platform
 
 logger = logging.getLogger(__name__)
 
-# Define safe symbols for different platforms
-def get_arrow_symbol():
-    """Get appropriate arrow symbol based on platform and encoding support"""
-    if platform.system() != "Windows":
-        return "→"
-    
-    try:
-        # Check if console supports UTF-8
-        import sys
-        if sys.stdout.encoding.lower() == 'utf-8':
-            return "→"
-    except:
-        pass
-    
-    # Fallback for Windows
-    return "->"
-
-# Get arrow symbol
-ARROW_SYMBOL = get_arrow_symbol()
+# Define a simple ASCII arrow for Windows
+ARROW_SYMBOL = "->"
 
 def get_source_documents():
     """Get all PDF files from source directory"""
@@ -97,12 +80,24 @@ def organize_document(pdf_path, document_data, client_folder_name=None):
         new_filename = f"{client_clean}_{doc_type_clean}_{period}.pdf"
         dest_path = client_dir / new_filename
         
-        # Log the paths for debugging - use safe arrow symbol that works on Windows
-        logger.info(f"Organized document: {pdf_path} {ARROW_SYMBOL} {dest_path}")
+        # Also create a JSON metadata file
+        json_path = client_dir / f"{client_clean}_{doc_type_clean}_{period}.json"
+        
+        # Log the paths for debugging - with ASCII arrow for compatibility
+        logger.info(f"Source path: {pdf_path} {ARROW_SYMBOL} Destination path: {dest_path}")
 
         # Copy the file with more retry attempts
         safe_copy_file(pdf_path, dest_path, max_retries=5)
         logger.info(f"File copied successfully: {dest_path}")
+        
+        # Save metadata as JSON
+        try:
+            import json
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(document_data, f, indent=4, ensure_ascii=True)
+            logger.info(f"Metadata saved to: {json_path}")
+        except Exception as e:
+            logger.warning(f"Could not save metadata file: {e}")
         
         # Delete the source file after successful processing
         delete_source_file(pdf_path)
