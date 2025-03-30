@@ -17,29 +17,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Load environment variables
 load_dotenv()
 
-# Import the new path resolver for Poppler
+# Import the new path resolver for Poppler - but don't run it at startup
 from src.path_resolver import setup_poppler_path
 
-# Setup Poppler path for both development and production environments
-poppler_setup_success = setup_poppler_path()
-if poppler_setup_success:
-    print(f"Poppler path set up successfully: {os.environ.get('POPPLER_PATH')}")
+# Don't setup poppler path during startup, only check if it's set
+poppler_path = os.environ.get('POPPLER_PATH', '')
+if poppler_path:
+    print(f"Poppler path environment variable found: {poppler_path}")
 else:
-    print("WARNING: Failed to set up Poppler path automatically")
-
-# Double-check if we can find pdftoppm
-try:
-    result = subprocess.run(['which', 'pdftoppm'], capture_output=True, text=True)
-    if result.returncode == 0:
-        print(f"Verified pdftoppm location: {result.stdout.strip()}")
-    else:
-        print("WARNING: pdftoppm not found in PATH")
-        # Try direct path resolution
-        pdftoppm_path = os.path.join(os.environ.get('POPPLER_PATH', ''), 'pdftoppm')
-        if os.path.exists(pdftoppm_path):
-            print(f"Found pdftoppm at direct path: {pdftoppm_path}")
-except Exception as e:
-    print(f"Error checking pdftoppm: {e}")
+    print("Poppler path environment variable not set. Will check during document processing.")
 
 # Import project modules
 from src.utils import setup_logging, save_checkpoint, load_checkpoint, save_failed_list
@@ -60,7 +46,22 @@ def main():
         print("Error: Please set your ANTHROPIC_API_KEY in the .env file")
         return
 
-    # Check for poppler installation
+    # Get client name from environment variable (set by the UI)
+    client_folder_name = os.getenv('CLIENT_NAME', '')
+    if client_folder_name:
+        logger.info(f"Processing documents for client: {client_folder_name}")
+        print(f"Processing documents for client: {client_folder_name}")
+
+    # Get all PDF files to process
+    pdf_files = get_source_documents()
+    total_files = len(pdf_files)
+    logger.info(f"Found {total_files} PDF files to process")
+
+    if not pdf_files:
+        print("No PDF files found in data/source_documents directory")
+        return
+
+    # Now check for poppler installation, since we're going to process PDFs
     poppler_installed, message = check_poppler_installation()
     if not poppler_installed:
         logger.error(f"PDF processing dependency error: {message}")
@@ -86,21 +87,6 @@ def main():
             print("  Fedora/RHEL: sudo dnf install poppler-utils")
             
         print("\nAfter installing the dependency, restart the application.\n")
-        return
-
-    # Get client name from environment variable (set by the UI)
-    client_folder_name = os.getenv('CLIENT_NAME', '')
-    if client_folder_name:
-        logger.info(f"Processing documents for client: {client_folder_name}")
-        print(f"Processing documents for client: {client_folder_name}")
-
-    # Get all PDF files to process
-    pdf_files = get_source_documents()
-    total_files = len(pdf_files)
-    logger.info(f"Found {total_files} PDF files to process")
-
-    if not pdf_files:
-        print("No PDF files found in data/source_documents directory")
         return
 
     # Check for checkpoint
