@@ -123,15 +123,15 @@ function setupDropArea() {
   // Click to browse files
   dropArea.querySelector('.browse-link').addEventListener('click', () => {
     // Use the dialog API instead of the file input
-    window.api.openFileDialog().then(result => {
-      console.log('File dialog result:', result);
-      if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
+    window.api.openFileDialog().then(filePaths => {
+      console.log('File dialog result:', filePaths);
+      if (filePaths && filePaths.length > 0) {
         // No need to call uploadFiles because the dialog handler already did this
         // Just update the UI
-        showStatus(`Added ${result.filePaths.length} files from dialog`, 'success');
+        showStatus(`Added ${filePaths.length} files from dialog`, 'success');
         
         // Simulate files for the UI
-        const files = result.filePaths.map(path => {
+        const files = filePaths.map(path => {
           const fileName = path.split(/[/\\]/).pop(); // Get filename from path
           return {
             name: fileName,
@@ -143,8 +143,24 @@ function setupDropArea() {
         // Update imported files list
         importedFiles = [...importedFiles, ...files];
         updateImportedFilesList();
-      } else if (result.error) {
-        showStatus(`Error opening file dialog: ${result.error}`, 'error');
+        
+        // Also send file paths to main process
+        window.api.uploadFiles(filePaths)
+          .then(result => {
+            console.log('Upload result:', result);
+            if (result.failed === 0) {
+              showStatus(`Successfully added ${result.success} files to source_documents folder`, 'success');
+            } else {
+              showStatus(`Added ${result.success} files. Failed to add ${result.failed} files.`, 
+                       result.success > 0 ? 'warning' : 'error');
+            }
+          })
+          .catch(err => {
+            console.error('Error uploading files:', err);
+            showStatus('Error uploading files: ' + err, 'error');
+          });
+      } else if (filePaths && filePaths.error) {
+        showStatus(`Error opening file dialog: ${filePaths.error}`, 'error');
       }
     }).catch(error => {
       console.error('Error opening file dialog:', error);
@@ -177,6 +193,49 @@ function handleDrop(e) {
   const dt = e.dataTransfer;
   const files = dt.files;
   
+  // If window.api is available, use it directly for dropped files
+  if (window.api && files.length > 0) {
+    // For Windows drag-and-drop fix
+    if (files[0].path || files[0].webkitRelativePath) {
+      const filePaths = Array.from(files).map(file => file.path || file.webkitRelativePath);
+      
+      if (filePaths.length > 0 && filePaths[0]) {
+        console.log('Using file.path for drag and drop in Windows:', filePaths);
+        
+        // Update UI
+        const uiFiles = filePaths.map(path => {
+          return {
+            name: path.split(/[/\\]/).pop(),
+            size: 0,
+            path: path
+          };
+        });
+        
+        importedFiles = [...importedFiles, ...uiFiles];
+        updateImportedFilesList();
+        
+        // Send to main process
+        window.api.uploadFiles(filePaths)
+          .then(result => {
+            console.log('Upload result:', result);
+            if (result.failed === 0) {
+              showStatus(`Successfully added ${result.success} files to source_documents folder`, 'success');
+            } else {
+              showStatus(`Added ${result.success} files. Failed to add ${result.failed} files.`, 
+                       result.success > 0 ? 'warning' : 'error');
+            }
+          })
+          .catch(err => {
+            console.error('Error uploading files:', err);
+            showStatus('Error uploading files: ' + err, 'error');
+          });
+        
+        return;
+      }
+    }
+  }
+  
+  // Fallback to the standard method
   handleFiles(files);
 }
 
