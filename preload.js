@@ -6,7 +6,15 @@ contextBridge.exposeInMainWorld('api', {
   // File operations
   getApiKey: () => ipcRenderer.invoke('get-api-key'),
   saveApiKey: (apiKey) => ipcRenderer.invoke('save-api-key', apiKey),
-  uploadFiles: (filePaths) => ipcRenderer.invoke('files-dropped', filePaths),
+  uploadFiles: (filePaths) => {
+    // Ensure we're passing an array of valid file paths
+    if (!Array.isArray(filePaths)) {
+      filePaths = [filePaths];
+    }
+    // Filter out any undefined or null paths
+    const validPaths = filePaths.filter(path => path);
+    return ipcRenderer.invoke('files-dropped', validPaths);
+  },
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
   processFiles: (filePaths) => ipcRenderer.invoke('process-files', filePaths),
   processDocuments: (clientName) => ipcRenderer.invoke('process-documents', clientName),
