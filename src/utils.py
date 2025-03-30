@@ -4,6 +4,8 @@ import time
 import logging
 import re
 import sys
+import io
+import platform
 from datetime import datetime
 from pathlib import Path
 import config
@@ -17,32 +19,50 @@ def setup_logging():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = config.LOG_DIR / f"processing_{timestamp}.log"
     
-    # Configure logging
+    # Configure logging with UTF-8 encoding for file handler
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             logging.FileHandler(log_file, encoding='utf-8'),
-            logging.StreamHandler()
+            logging.StreamHandler(stream=io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='backslashreplace') 
+                                 if platform.system() == "Windows" else sys.stderr)
         ]
     )
     
     # Set console encoding to utf-8 if on Windows
-    if os.name == 'nt':
+    if platform.system() == "Windows":
         try:
             # Try to set console mode to support UTF-8 output
             os.system('chcp 65001 > NUL')
+            
+            # Also try to use ctypes to set code page
+            try:
+                import ctypes
+                ctypes.windll.kernel32.SetConsoleCP(65001)
+                ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+            except:
+                pass
+                
         except:
             # If that fails, we'll rely on the ASCII fallbacks in the code
             pass
     
-    return logging.getLogger(__name__)
+    logger = logging.getLogger(__name__)
+    
+    # Log platform info for debugging
+    logger.info(f"Platform: {platform.system()} {platform.release()}")
+    logger.info(f"Python version: {platform.python_version()}")
+    if platform.system() == "Windows":
+        logger.info(f"Console encoding: {sys.stdout.encoding}")
+    
+    return logger
 
 def save_checkpoint(processed_paths):
     """Save checkpoint of processed files"""
     checkpoint_path = config.DATA_DIR / "checkpoint.json"
     
-    with open(checkpoint_path, 'w') as f:
+    with open(checkpoint_path, 'w', encoding='utf-8') as f:
         json.dump(processed_paths, f)
 
 def load_checkpoint():
@@ -53,7 +73,7 @@ def load_checkpoint():
         return []
     
     try:
-        with open(checkpoint_path, 'r') as f:
+        with open(checkpoint_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception as e:
         print(f"Error loading checkpoint: {e}")
@@ -67,7 +87,7 @@ def save_failed_list(failed_paths):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     failed_path = config.LOG_DIR / f"failed_{timestamp}.json"
     
-    with open(failed_path, 'w') as f:
+    with open(failed_path, 'w', encoding='utf-8') as f:
         json.dump(failed_paths, f)
     
     return str(failed_path)
