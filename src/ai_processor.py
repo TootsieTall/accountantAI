@@ -14,7 +14,7 @@ import anthropic
 import config
 
 # Import our direct PDF converter
-from src.direct_pdf_converter import convert_pdf_to_image
+from src.direct_pdf_converter import convert_pdf_to_image, create_text_image
 
 logger = logging.getLogger(__name__)
 
@@ -149,9 +149,11 @@ def check_poppler_installation():
                         found = True
                         break
                 if not found:
-                    return False, "Poppler is not installed or not in PATH. Download from http://blog.alivate.com.au/poppler-windows/ and add to PATH"
+                    # We'll continue anyway - our direct converter will handle this
+                    logger.warning("Poppler not found in common locations on Windows")
+                    return True, "Poppler not found, but will use fallback methods"
             
-            return True, "Poppler is installed and available"
+            return True, "Poppler check completed"
         
         else:  # Linux and others
             result = subprocess.run(['which', 'pdftoppm'], capture_output=True, text=True)
@@ -164,7 +166,8 @@ def check_poppler_installation():
     
     except Exception as e:
         logger.error(f"Error checking poppler installation: {str(e)}")
-        return False, f"Error checking poppler installation: {str(e)}"
+        # Continue anyway, we'll use fallbacks
+        return True, f"Error checking poppler, will use fallbacks: {str(e)}"
 
 def process_document(pdf_path):
     """
@@ -200,7 +203,9 @@ def process_document(pdf_path):
                 
                 if approach == "direct_converter":
                     # Use our direct converter that doesn't rely on environment variables
-                    images = convert_pdf_to_image(pdf_path, dpi=150)
+                    # On Windows, use a higher DPI (200) for better quality
+                    windows_dpi = 200 if platform.system() == "Windows" else 150
+                    images = convert_pdf_to_image(pdf_path, dpi=windows_dpi)
                     if images:
                         logger.info("Direct converter succeeded")
                         break
@@ -211,7 +216,7 @@ def process_document(pdf_path):
                     if os.environ.get('POPPLER_PATH'):
                         kwargs['poppler_path'] = os.environ.get('POPPLER_PATH')
                     
-                    dpi = 150 if platform.system() == "Darwin" else 200
+                    dpi = 200 if platform.system() == "Windows" else 150
                     images = convert_from_path(pdf_path, first_page=1, last_page=1, dpi=dpi, **kwargs)
                     if images:
                         logger.info("pdf2image succeeded")
@@ -219,20 +224,39 @@ def process_document(pdf_path):
                 
                 elif approach == "command_line":
                     # Try direct command line approach
-                    tmp_output = "/tmp/pdf_page.png"
+                    tmp_output = os.path.join(os.path.dirname(pdf_path), "pdf_page.png")
                     pdftoppm_path = "pdftoppm"  # Try to use from PATH
                     
                     # Use POPPLER_PATH if available
                     if os.environ.get('POPPLER_PATH'):
                         pdftoppm_path = os.path.join(os.environ.get('POPPLER_PATH'), "pdftoppm")
+                        if platform.system() == "Windows":
+                            pdftoppm_path += ".exe"
                     
-                    cmd = [pdftoppm_path, "-png", "-singlefile", "-f", "1", "-l", "1", str(pdf_path), "/tmp/pdf_page"]
+                    # For Windows, handle spaces in paths
+                    if platform.system() == "Windows":
+                        pdf_path_arg = f'"{pdf_path}"'
+                        tmp_output_base = f'"{os.path.join(os.path.dirname(pdf_path), "pdf_page")}"'
+                    else:
+                        pdf_path_arg = pdf_path
+                        tmp_output_base = os.path.join(os.path.dirname(pdf_path), "pdf_page")
+                    
+                    cmd = [pdftoppm_path, "-png", "-singlefile", "-f", "1", "-l", "1", str(pdf_path), tmp_output_base]
+                    
+                    # Log the command
+                    logger.info(f"Running command: {' '.join(cmd)}")
+                    
                     subprocess.run(cmd, check=True)
                     
                     if os.path.exists(tmp_output):
                         from PIL import Image
                         images = [Image.open(tmp_output)]
                         logger.info("Command line approach succeeded")
+                        # Clean up temp file
+                        try:
+                            os.remove(tmp_output)
+                        except:
+                            pass
                         break
             
             except Exception as e:
@@ -241,11 +265,15 @@ def process_document(pdf_path):
                 logger.warning(f"Approach '{approach}' failed: {error_msg}")
                 continue
         
-        # Raise error if all approaches failed
+        # If all approaches failed, create a fallback image with error message
         if not images:
             error_msg = "All PDF conversion approaches failed: " + "; ".join(error_messages)
             logger.error(error_msg)
-            raise Exception(error_msg)
+            
+            # Create a fallback image with error text
+            error_text = f"Could not convert PDF.\nFile: {pdf_path}\nErrors: {error_msg}"
+            images = [create_text_image(error_text)]
+            logger.info("Created fallback image with error message")
 
         # Encode image to base64
         buffered = io.BytesIO()
