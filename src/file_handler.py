@@ -6,6 +6,7 @@ import logging
 import config
 from src.utils import clean_filename
 import platform
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +62,11 @@ def organize_document(pdf_path, document_data, client_folder_name=None):
         # Use client_folder_name if provided, otherwise fall back to extracted name
         if client_folder_name and client_folder_name.strip():
             client_clean = clean_filename(client_folder_name)
-            logger.info(f"Using provided client name: {client_folder_name} -> {client_clean}")
+            logger.info(f"Using provided client name: {client_folder_name} {ARROW_SYMBOL} {client_clean}")
         else:
             client_name = document_data.get('client_name', 'unknown')
             client_clean = clean_filename(client_name)
-            logger.info(f"Using extracted client name: {client_name} -> {client_clean}")
+            logger.info(f"Using extracted client name: {client_name} {ARROW_SYMBOL} {client_clean}")
 
         # Clean up names for filesystem use
         doc_type_clean = clean_filename(doc_type)
@@ -83,7 +84,8 @@ def organize_document(pdf_path, document_data, client_folder_name=None):
         # Also create a JSON metadata file
         json_path = client_dir / f"{client_clean}_{doc_type_clean}_{period}.json"
         
-        # Log the paths for debugging - with ASCII arrow for compatibility
+        # IMPORTANT: Use only ASCII characters in log messages
+        # Do NOT use Unicode arrow character here - this is what was causing the bug
         logger.info(f"Source path: {pdf_path} {ARROW_SYMBOL} Destination path: {dest_path}")
 
         # Copy the file with more retry attempts
@@ -92,7 +94,6 @@ def organize_document(pdf_path, document_data, client_folder_name=None):
         
         # Save metadata as JSON
         try:
-            import json
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(document_data, f, indent=4, ensure_ascii=True)
             logger.info(f"Metadata saved to: {json_path}")
