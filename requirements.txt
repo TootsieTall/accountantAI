@@ -1,8 +1,6 @@
-# Core dependencies
-anthropic==0.16.0
-python-dotenv==1.0.0
-tqdm==4.66.1
-pdf2image==1.17.0
-poppler-utils==0.1.0
-requests==2.31.0
-pillow==9.5.0  # Changed from >= 10.1.0 to a more stable version
+anthropic==0.18.0
+python-dotenv==1.0.1
+tqdm==4.66.2
+Pillow==10.2.0
+PyMuPDF==1.23.22  # Primary PDF processor (no external dependencies)
+pdf2image==1.17.0  # Fallback PDF processor (requires poppler)
