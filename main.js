@@ -60,6 +60,28 @@ function getDataDirectories() {
   };
 }
 
+// Function to check if Poppler is installed
+async function checkPopplerInstallation() {
+  // Only run this check if explicitly requested, not during startup
+  try {
+    // Try to load the poppler utility module
+    const popplerUtility = require('./install-poppler');
+    
+    if (process.platform === 'darwin') {
+      return await popplerUtility.checkPopplerMac();
+    } else if (process.platform === 'win32') {
+      return await popplerUtility.checkPopplerWindows();
+    } else {
+      // Linux and others - assume it's installed via package manager
+      return true;
+    }
+  } catch (error) {
+    console.error('Error checking poppler installation:', error);
+    // Don't block the app startup
+    return false;
+  }
+}
+
 // Function to install Python dependencies
 async function installPythonDependencies() {
   return new Promise((resolve, reject) => {
@@ -266,6 +288,17 @@ function getEnvFilePath() {
 }
 
 // ----------- IPC HANDLERS -----------
+
+// Handler for checking poppler installation
+ipcMain.handle('check-poppler', async () => {
+  const isInstalled = await checkPopplerInstallation();
+  return { 
+    installed: isInstalled,
+    message: isInstalled ? 
+      'Poppler is installed and ready to use' : 
+      'Poppler is not installed. Please install it before processing documents.'
+  };
+});
 
 // NEW: Handler for opening results folder directly
 ipcMain.handle('open-results-folder', async (event, folderPath) => {
