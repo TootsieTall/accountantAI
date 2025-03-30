@@ -102,15 +102,30 @@ function switchTab(tabId) {
 // ------------- DROP AREA & FILE HANDLING -------------
 
 function setupDropArea() {
-  // Prevent default behavior for drag events
+  // Activate drop zone for the entire document
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // This is critical - must set effectAllowed and dropEffect
+    e.dataTransfer.effectAllowed = 'copyMove';
+    e.dataTransfer.dropEffect = 'copy';
+  }, false);
+  
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, false);
+
+  // Prevent default behavior for drag events on drop area
   ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
     dropArea.addEventListener(eventName, preventDefaults, false);
-    document.body.addEventListener(eventName, preventDefaults, false);
   });
 
   // Highlight drop area when dragging over it
   ['dragenter', 'dragover'].forEach(eventName => {
-    dropArea.addEventListener(eventName, highlight, false);
+    dropArea.addEventListener(eventName, (e) => {
+      highlight(e);
+    }, false);
   });
 
   ['dragleave', 'drop'].forEach(eventName => {
@@ -178,9 +193,19 @@ function setupFileInput() {
 function preventDefaults(e) {
   e.preventDefault();
   e.stopPropagation();
+  
+  // Critical for Windows drag-and-drop to work
+  if (e.type === 'dragover') {
+    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.dropEffect = 'copy';
+  }
 }
 
-function highlight() {
+function highlight(e) {
+  // Explicitly set the drop effect
+  if (e.dataTransfer) {
+    e.dataTransfer.dropEffect = 'copy';
+  }
   dropArea.classList.add('active');
 }
 
