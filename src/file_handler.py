@@ -78,11 +78,11 @@ def organize_document(pdf_path, document_data, client_folder_name=None):
         logger.info(f"Created client directory: {client_dir}")
 
         # Create new filename
-        new_filename = f"{client_clean}_{doc_type_clean}_{period}.pdf"
+        new_filename = f"{doc_type_clean}_{period}.pdf"
         dest_path = client_dir / new_filename
         
         # Also create a JSON metadata file
-        json_path = client_dir / f"{client_clean}_{doc_type_clean}_{period}.json"
+        json_path = client_dir / f"{doc_type_clean}_{period}.json"
         
         # IMPORTANT: Use only ASCII characters in log messages
         # Do NOT use Unicode arrow character here - this is what was causing the bug
