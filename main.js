@@ -689,6 +689,208 @@ async function startPythonProcess(clientName = '', options = {}) {
   }
 }
 
+// Handle starting a specific Python script (for multi-client processing)
+ipcMain.handle('start-python-script', async (event, scriptName, clientName = '') => {
+  console.log(`Starting Python script: ${scriptName} with client name: "${clientName}"`);
+  
+  try {
+    // Get proper directories
+    const { appDataDir, dataDir } = getDataDirectories();
+    
+    // Read the API key from the .env file
+    const envPath = getEnvFilePath();
+    if (!fs.existsSync(envPath)) {
+      return { 
+        success: false, 
+        error: 'API key not set. Please set your API key in the settings.'
+      };
+    }
+    
+    // Load the .env file content
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    const envVars = dotenv.parse(envContent);
+    
+    if (!envVars.ANTHROPIC_API_KEY || envVars.ANTHROPIC_API_KEY === 'your_api_key_here') {
+      return { 
+        success: false, 
+        error: 'API key not set or using default value. Please update your API key in the settings.'
+      };
+    }
+    
+    // Make sure Python dependencies are installed
+    try {
+      await installPythonDependencies();
+    } catch (error) {
+      console.error('Error installing Python dependencies:', error);
+      // Continue anyway - we'll see if the process can still run
+    }
+    
+    // Check if Python process is already running
+    if (pythonProcess) {
+      console.log(`Python process is already running (PID: ${pythonProcess.pid})`);
+      if (mainWindow) {
+        mainWindow.webContents.send('process-status', {
+          status: 'running',
+          message: 'Document processing already running',
+          data: 'Python process is already active'
+        });
+      }
+      return { success: true, alreadyRunning: true };
+    }
+    
+    // Set environment variables for the Python process
+    const env = {
+      ...process.env,
+      ANTHROPIC_API_KEY: envVars.ANTHROPIC_API_KEY,
+      APP_DATA_DIR: appDataDir
+    };
+    
+    // Add client name to environment if provided (even for multi-client mode it can be useful)
+    if (clientName) {
+      env.CLIENT_NAME = clientName;
+    }
+    
+    // Determine script path
+    let scriptPath;
+    
+    // Copy the multi_client_processor.py to app data if it doesn't exist
+    const appDataScriptPath = path.join(appDataDir, scriptName);
+    const originalScriptPath = isDev
+      ? path.join(__dirname, scriptName)
+      : path.join(process.resourcesPath, scriptName);
+    
+    // Copy the script if it doesn't exist or update it
+    if (fs.existsSync(originalScriptPath)) {
+      console.log(`Copying ${scriptName} from ${originalScriptPath} to ${appDataScriptPath}`);
+      fs.copyFileSync(originalScriptPath, appDataScriptPath);
+    } else {
+      console.error(`Could not find ${scriptName} in resource path: ${originalScriptPath}`);
+      return { 
+        success: false, 
+        error: `Missing required script: ${scriptName}`
+      };
+    }
+    
+    // Now use the copied script path
+    scriptPath = appDataScriptPath;
+    
+    // Determine correct Python executable based on platform
+    let pythonExecutable;
+    if (process.platform === 'darwin') {
+      // macOS usually has python3
+      pythonExecutable = 'python3';
+    } else if (process.platform === 'win32') {
+      // Windows might have python or py
+      pythonExecutable = 'python';
+    } else {
+      // Linux likely has python3
+      pythonExecutable = 'python3';
+    }
+    
+    console.log(`Using Python executable: ${pythonExecutable}`);
+    console.log(`Script path: ${scriptPath}`);
+    
+    // Spawn the Python process with the app data directory as working directory
+    pythonProcess = spawn(pythonExecutable, [scriptPath], {
+      env,
+      cwd: appDataDir // Set working directory to app data directory
+    });
+    
+    // Set up handlers for the Python process
+    pythonProcess.stdout.on('data', (data) => {
+      const output = data.toString();
+      console.log(`Python stdout: ${output}`);
+      
+      // Parse and handle Python output for UI updates
+      try {
+        // Check if output is JSON
+        if (output.trim().startsWith('{') && output.trim().endsWith('}')) {
+          const jsonData = JSON.parse(output);
+          
+          // If it has status property, send as process-status event
+          if (jsonData.status) {
+            if (mainWindow) {
+              mainWindow.webContents.send('process-status', jsonData);
+            }
+          }
+          // If it has final results, send as process-result event
+          else if (jsonData.success !== undefined) {
+            if (mainWindow) {
+              mainWindow.webContents.send('process-result', jsonData);
+            }
+          }
+        } else {
+          // Non-JSON output - send as regular status update
+          if (mainWindow) {
+            mainWindow.webContents.send('process-status', {
+              status: 'running',
+              data: output
+            });
+          }
+        }
+      } catch (error) {
+        // If not valid JSON or other error, just send as regular output
+        if (mainWindow) {
+          mainWindow.webContents.send('python-output', output);
+        }
+      }
+    });
+    
+    pythonProcess.stderr.on('data', (data) => {
+      const errorOutput = data.toString();
+      console.error(`Python stderr: ${errorOutput}`);
+      if (mainWindow) {
+        mainWindow.webContents.send('python-error', errorOutput);
+        // Also send as status update with error type
+        mainWindow.webContents.send('process-status', {
+          status: 'error',
+          data: errorOutput
+        });
+      }
+    });
+    
+    pythonProcess.on('close', (code) => {
+      console.log(`Python process exited with code ${code}`);
+      
+      // Send exit event
+      if (mainWindow) {
+        mainWindow.webContents.send('python-exit', code);
+        
+        // Send final status based on exit code
+        if (code === 0) {
+          mainWindow.webContents.send('process-result', {
+            success: true,
+            message: 'Processing completed successfully',
+            processed: 1 // Placeholder count
+          });
+        } else {
+          mainWindow.webContents.send('process-result', {
+            success: false,
+            message: `Processing failed with exit code ${code}`,
+            processed: 0
+          });
+        }
+      }
+      
+      pythonProcess = null;
+    });
+    
+    // Return success
+    return { 
+      success: true, 
+      message: `Started ${scriptName} successfully`, 
+      pid: pythonProcess.pid 
+    };
+    
+  } catch (error) {
+    console.error(`Error starting Python script ${scriptName}:`, error);
+    return { 
+      success: false, 
+      error: error.message || `Failed to start ${scriptName}`
+    };
+  }
+});
+
 // Handle process-documents request from renderer
 ipcMain.handle('process-documents', async (event, clientName = '') => {
   console.log('IPC: process-documents receiced with client name:', clientName);
