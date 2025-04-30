@@ -30,6 +30,21 @@ contextBridge.exposeInMainWorld('api', {
   startPython: (options) => ipcRenderer.invoke('start-python', options),
   stopPython: () => ipcRenderer.invoke('stop-python'),
   
+// New handler for starting specific Python scripts (multi-client mode)
+startPythonScript: (scriptName, clientName) => 
+  ipcRenderer.invoke('start-python-script', scriptName, clientName),
+  
+// Add getter for the current processing mode
+getProcessingMode: () => {
+  return localStorage.getItem('processingMode') || 'single';
+},
+
+// Add setter for the processing mode
+setProcessingMode: (mode) => {
+  localStorage.setItem('processingMode', mode);
+  return true;
+},
+  
   // New handler for starting specific Python scripts (multi-client mode)
   startPythonScript: (scriptName, clientName) => 
     ipcRenderer.invoke('start-python-script', scriptName, clientName),
