@@ -22,6 +22,12 @@ const modalTitle = document.getElementById('modalTitle');
 const modalBody = document.getElementById('modalBody');
 const modalCancelBtn = document.getElementById('modalCancelBtn');
 const modalConfirmBtn = document.getElementById('modalConfirmBtn');
+const uploadInstructions = document.getElementById('upload-instructions');
+
+// Processing mode elements
+const singleClientMode = document.getElementById('single-client-mode');
+const multiClientMode = document.getElementById('multi-client-mode');
+const clientNameContainer = document.querySelector('.client-name-container');
 
 // Tab Navigation
 const tabItems = document.querySelectorAll('.tab-item');
@@ -33,6 +39,7 @@ let processingFiles = [];
 let currentDirectory = 'processed';
 let currentProcessedFiles = 0;
 let totalProcessedFiles = 0;
+let processingMode = 'single'; // Default to single client mode
 
 // ------------- INITIALIZATION -------------
 
@@ -45,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupProcessButton();
   setupResultsTab();
   setupSettingsTab();
+  setupModeToggle();
   setupEventListeners();
   
   // Register event listeners from main process
@@ -54,6 +62,83 @@ document.addEventListener('DOMContentLoaded', () => {
   // Log initialization complete
   console.log('Application initialized successfully');
 });
+
+// Function to set up the mode toggle
+function setupModeToggle() {
+  console.log('Setting up processing mode toggle');
+  
+  // Set up event listeners for the mode toggle
+  singleClientMode.addEventListener('change', function() {
+    if (this.checked) {
+      processingMode = 'single';
+      // Enable client name input
+      clientNameContainer.classList.remove('disabled');
+      clientNameInput.disabled = false;
+      // Update the UI to indicate single client mode
+      updateUIForMode('single');
+    }
+  });
+  
+  multiClientMode.addEventListener('change', function() {
+    if (this.checked) {
+      processingMode = 'multi';
+      // Disable client name input
+      clientNameContainer.classList.add('disabled');
+      clientNameInput.disabled = true;
+      // Update the UI to indicate multi-client mode
+      updateUIForMode('multi');
+    }
+  });
+  
+  // Restore saved mode if available
+  const savedMode = localStorage.getItem('processingMode');
+  if (savedMode) {
+    processingMode = savedMode;
+    if (savedMode === 'multi') {
+      multiClientMode.checked = true;
+      singleClientMode.checked = false;
+      clientNameContainer.classList.add('disabled');
+      clientNameInput.disabled = true;
+    } else {
+      singleClientMode.checked = true;
+      multiClientMode.checked = false;
+      clientNameContainer.classList.remove('disabled');
+      clientNameInput.disabled = false;
+    }
+    // Update UI for the loaded mode
+    updateUIForMode(processingMode);
+  }
+}
+
+// Function to update UI based on selected mode
+function updateUIForMode(mode) {
+  const singleClientOption = document.querySelector('#single-client-mode').parentElement;
+  const multiClientOption = document.querySelector('#multi-client-mode').parentElement;
+  
+  // Update toggle highlight
+  if (mode === 'single') {
+    singleClientOption.classList.add('active');
+    multiClientOption.classList.remove('active');
+    
+    // Update processing button text
+    processBtn.textContent = 'Process Documents for Client';
+    
+    // Update instructions
+    uploadInstructions.textContent = 'Drag & drop PDF files for the specified client, or click to select files.';
+  } else { // multi
+    singleClientOption.classList.remove('active');
+    multiClientOption.classList.add('active');
+    
+    // Update processing button text
+    processBtn.textContent = 'Process Documents (Multiple Clients)';
+    
+    // Update instructions
+    uploadInstructions.textContent = 'Drag & drop tax documents for multiple clients. Client names will be auto-detected.';
+  }
+  
+  // Store the current mode in localStorage
+  localStorage.setItem('processingMode', mode);
+}
 
 // ------------- TAB NAVIGATION -------------
 
@@ -393,14 +478,17 @@ function setupProcessButton() {
 
 function startProcessing() {
   console.log('Start processing function called');
+  console.log('Processing mode:', processingMode);
   
-  // Validate client name
+  // Validate client name if in single client mode
   const clientName = clientNameInput.value.trim();
-  console.log('Client name:', clientName);
-  if (!clientName) {
-    showStatus('Please enter a client name', 'error');
-    clientNameInput.focus();
-    return;
+  if (processingMode === 'single') {
+    console.log('Client name:', clientName);
+    if (!clientName) {
+      showStatus('Please enter a client name when using Single Client Mode', 'error');
+      clientNameInput.focus();
+      return;
+    }
   }
   
   // Check if any files are imported
@@ -423,10 +511,15 @@ function startProcessing() {
   
   // Update button and show status
   processBtn.disabled = true;
-  showStatus(`Starting document processing for client: ${clientName}`, 'running');
   
-  // Add processing log entry
-  addToProcessingLog(`Starting processing for client: ${clientName}`);
+  if (processingMode === 'single') {
+    showStatus(`Starting document processing for client: ${clientName}`, 'running');
+    addToProcessingLog(`Starting processing for client: ${clientName}`);
+  } else {
+    showStatus(`Starting multi-client document processing`, 'running');
+    addToProcessingLog(`Starting multi-client processing`);
+  }
+  
   addToProcessingLog(`Processing ${processingFiles.length} files`);
   
   // Check API key first
@@ -436,9 +529,16 @@ function startProcessing() {
         throw new Error('API key not set. Please configure in Settings.');
       }
       
-      // Now call the processing function
-      console.log('API key valid, starting document processing');
-      return window.api.processDocuments(clientName);
+      // Call the appropriate processing function based on mode
+      console.log('API key valid, starting document processing in', processingMode, 'mode');
+      
+      if (processingMode === 'multi') {
+        // Use the multi-client processor
+        return window.api.startPythonScript('multi_client_processor.py', '');
+      } else {
+        // Use the standard processor with client name
+        return window.api.processDocuments(clientName);
+      }
     })
     .then(result => {
       console.log('Process started successfully:', result);
