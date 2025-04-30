@@ -35,13 +35,35 @@
 
         <div class="drop-area" id="dropArea">
           <div class="drop-icon"><i class="fas fa-file-upload"></i></div>
-          <div class="drop-text">Drag & drop PDF files here</div>
+          <div class="drop-text" id="upload-instructions">Drag & drop PDF files here</div>
           <div class="drop-subtext">or <span class="browse-link">browse</span> for files</div>
           <input type="file" id="fileInput" multiple accept=".pdf" hidden>
         </div>
         
+        <!-- Processing Mode Toggle -->
+        <div class="settings-container mode-toggle-container">
+          <h3>Document Processing Mode</h3>
+          <div class="toggle-container">
+            <div class="toggle-option active">
+              <input type="radio" id="single-client-mode" name="processing-mode" value="single" checked>
+              <label for="single-client-mode">Single Client Mode</label>
+              <div class="mode-description">
+                Process all documents for a single client specified below
+              </div>
+            </div>
+            <div class="toggle-option">
+              <input type="radio" id="multi-client-mode" name="processing-mode" value="multi">
+              <label for="multi-client-mode">Multi-Client Mode</label>
+              <div class="mode-description">
+                Auto-detect client names from each document and organize accordingly
+              </div>
+            </div>
+          </div>
+        </div>
+        
         <!-- Client Name Input -->
-        <div class="client-name-container">
+        <div class="settings-container client-name-container">
+          <h3>Client Name <span class="optional-indicator">(Only for Single Client Mode)</span></h3>
           <input type="text" id="clientNameInput" class="client-name-input" placeholder="Enter Client Name">
         </div>
         
