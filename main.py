@@ -38,16 +38,103 @@ else:
 
 # Import project modules
 from src.utils import setup_logging, save_checkpoint, load_checkpoint, save_failed_list
-from src.file_handler import get_source_documents, organize_document
+from src.file_handler import get_source_documents, organize_document, validate_processed_directory_structure
 from src.ai_processor import process_document, check_poppler_installation
+
+# Import the enhanced utilities for filename generation
+from src.utils import clean_filename, create_safe_filename, simplify_document_type
+
 import config
+
+def clean_ai_response_data(document_data):
+    """
+    Clean and standardize AI response data using the enhanced utility functions
+    """
+    # Clean document type using the new simplification function
+    if 'document_type' in document_data:
+        raw_doc_type = document_data['document_type']
+        document_data['document_type'] = simplify_document_type(raw_doc_type)
+    
+    # Clean client name
+    if 'client_name' in document_data:
+        raw_client = document_data['client_name']
+        document_data['client_name'] = clean_filename(raw_client, is_client_name=True)
+    
+    # Clean period/year
+    if 'period_year' in document_data:
+        raw_period = document_data['period_year']
+        # Simple cleanup for period - remove extra spaces and standardize format
+        cleaned_period = raw_period.strip()
+        if cleaned_period:
+            document_data['period_year'] = cleaned_period
+    
+    # Clean institution name
+    if 'institution' in document_data:
+        raw_institution = document_data['institution']
+        document_data['institution'] = clean_filename(raw_institution)
+    
+    return document_data
+
+def create_optimized_filename(document_data, original_filename):
+    """
+    Create an optimized filename using the enhanced filename generation logic
+    """
+    doc_type = document_data.get('document_type', 'Document')
+    period = document_data.get('period_year', 'Unknown')
+    institution = document_data.get('institution', '')
+    
+    # Use the enhanced filename creation function
+    return create_safe_filename(doc_type, period, institution)
+
+def process_with_enhanced_organization(pdf_path, client_folder_name, logger):
+    """
+    Process a document with enhanced filename generation and organization
+    """
+    try:
+        logger.info(f"Processing {pdf_path}")
+        print(f"\nProcessing: {pdf_path.name}")
+
+        # Process document with AI
+        document_data = process_document(pdf_path)
+        
+        # Clean and standardize the AI response data
+        document_data = clean_ai_response_data(document_data)
+        
+        # Create optimized filename
+        optimized_filename = create_optimized_filename(document_data, pdf_path.name)
+        
+        # Add the optimized filename to document data for the file handler
+        document_data['optimized_filename'] = optimized_filename
+        
+        # Organize the document with enhanced logic
+        result = organize_document(pdf_path, document_data, client_folder_name)
+
+        if result['success']:
+            # Display enhanced success info
+            client_name = client_folder_name or document_data.get('client_name', 'Unknown')
+            print(f"{SYMBOLS['success']} Successfully processed: {pdf_path.name}")
+            print(f"  • Document type: {document_data.get('document_type')}")
+            print(f"  • Recipient: {document_data.get('client_name')}")
+            print(f"  • Tax year: {document_data.get('period_year')}")
+            print(f"  • Institution: {document_data.get('institution')}")
+            print(f"  • Optimized filename: {optimized_filename}")
+            print(f"  • Organized to: {client_name}/")
+            
+            return True, result
+        else:
+            raise Exception(result.get('error', 'Unknown error during organization'))
+
+    except Exception as e:
+        logger.error(f"Error processing {pdf_path}: {str(e)}")
+        print(f"{SYMBOLS['error']} Error processing {pdf_path.name}: {str(e)}")
+        return False, {'error': str(e)}
 
 def main():
     """Main entry point for the tax document processor"""
 
     # Set up logging
     logger = setup_logging()
-    logger.info("Starting tax document processor")
+    logger.info("Starting tax document processor with enhanced filename generation")
 
     # Check for Anthropic API key
     if not os.getenv('ANTHROPIC_API_KEY'):
@@ -70,7 +157,7 @@ def main():
         print("No PDF files found in data/source_documents directory")
         return
 
-    # Now check for poppler installation, since we're going to process PDFs
+    # Check for poppler installation
     poppler_installed, message = check_poppler_installation()
     if not poppler_installed:
         logger.error(f"PDF processing dependency error: {message}")
@@ -106,12 +193,31 @@ def main():
         print(f"Resuming from checkpoint. {len(processed_paths)} files already processed.")
         print(f"{len(pdf_files)} files remaining.")
 
+    # Validate and fix directory structure before processing
+    print("Validating and fixing directory structure...")
+    try:
+        issues_fixed = validate_processed_directory_structure()
+        if issues_fixed:
+            print(f"{SYMBOLS['success']} Fixed {len(issues_fixed)} directory structure issues")
+            for issue in issues_fixed:
+                print(f"  • {issue}")
+        else:
+            print(f"{SYMBOLS['success']} Directory structure is correct")
+    except Exception as e:
+        logger.warning(f"Directory validation failed: {str(e)}")
+        print(f"{SYMBOLS['warning']} Directory validation failed, continuing anyway: {str(e)}")
+
     # Initialize results tracking
     results = {'success': 0, 'failed': 0, 'retry_success': 0}
     failed_docs = []
     newly_processed = []
 
     print(f"Processing {len(pdf_files)} documents in batches of {config.BATCH_SIZE}...")
+    print("Enhanced features enabled:")
+    print("  • Smart document type simplification")
+    print("  • Intelligent filename length management")
+    print("  • Word-based truncation preserving meaning")
+    print("  • Enhanced client name sanitization")
 
     # Process in batches
     for batch_start in range(0, len(pdf_files), config.BATCH_SIZE):
@@ -130,36 +236,25 @@ def main():
                     file_num = batch_start + idx + 1
                     pbar.set_description(f"Processing [{file_num}/{len(pdf_files)}]")
 
-                    logger.info(f"Processing {pdf_path}")
-                    print(f"\nFile {file_num}/{len(pdf_files)}: {pdf_path.name}")
-
-                    # Process document with error handling and retries
+                    # Process document with enhanced logic
                     retry_count = 0
                     success = False
 
                     while not success and retry_count < config.MAX_RETRIES:
                         try:
-                            document_data = process_document(pdf_path)
-                            result = organize_document(pdf_path, document_data, client_folder_name)
-
-                            if result['success']:
+                            success, result = process_with_enhanced_organization(
+                                pdf_path, client_folder_name, logger
+                            )
+                            
+                            if success:
                                 if retry_count > 0:
                                     results['retry_success'] += 1
                                 else:
                                     results['success'] += 1
-                                success = True
 
                                 # Add to processed list for checkpoint
                                 newly_processed.append(str(pdf_path))
                                 processed_paths.add(str(pdf_path))
-
-                                # Display success info
-                                client_name = client_folder_name or document_data.get('client_name', 'Unknown')
-                                print(f"{SYMBOLS['success']} Successfully processed: {pdf_path.name}")
-                                print(f"  • Document type: {document_data.get('document_type')}")
-                                print(f"  • Recipient: {document_data.get('client_name')}")
-                                print(f"  • Tax year: {document_data.get('period_year')}")
-                                print(f"  • Organized to: {client_name}/")
                             else:
                                 raise Exception(result.get('error', 'Unknown error'))
 
@@ -209,20 +304,27 @@ def main():
     if failed_docs:
         failed_path = save_failed_list(failed_docs)
 
-    # Print summary
+    # Print enhanced summary
     print("\n" + "="*60)
-    print(f"Processing complete!")
+    print(f"Processing complete with enhanced filename generation!")
     print(f"  • Successfully processed: {results['success']} documents")
     print(f"  • Successful after retry: {results['retry_success']} documents")
     print(f"  • Failed to process: {results['failed']} documents")
     print(f"  • Total documents processed: {len(processed_paths)} (including previous runs)")
+    
+    if results['success'] > 0 or results['retry_success'] > 0:
+        print(f"\nEnhanced features used:")
+        print(f"  • Smart filename generation with max 100 character limit")
+        print(f"  • Document type standardization and simplification")
+        print(f"  • Word-based intelligent truncation")
+        print(f"  • Enhanced client name sanitization")
 
     if failed_path:
         print(f"  • Failed document list saved to: {failed_path}")
 
     print("="*60)
 
-    logger.info(f"Processing complete. Success: {results['success']}, Retry Success: {results['retry_success']}, Failed: {results['failed']}")
+    logger.info(f"Enhanced processing complete. Success: {results['success']}, Retry Success: {results['retry_success']}, Failed: {results['failed']}")
 
 if __name__ == "__main__":
     try:
