@@ -283,24 +283,26 @@ def process_document(pdf_path):
         # Initialize Anthropic client
         client = anthropic.Anthropic()
 
-        # Prepare prompt for document analysis
+        # Enhanced prompt for better document analysis and concise naming
         prompt = """
-        Please analyze this financial document and extract the following information:
+        Please analyze this financial document and extract the following information. For document type, use SHORT, CLEAR names (avoid long descriptions):
 
-        1. Document type (e.g., W-2, 1099-INT, 1099-R, Investment Statement, Account Summary, etc.)
+        1. Document type - Use CONCISE terms like: W-2, 1099-INT, Bank-Statement, Investment-Statement, etc. (NOT long descriptions)
         2. Account holder/Client name
-        3. Statement period or tax year
-        4. Financial institution name
+        3. Statement period or tax year (just the year like "2023" or date range like "2023-Q4")
+        4. Financial institution name (shortened if very long)
         5. Account number (last 4 digits or masked)
         6. Total account value/balance (if applicable)
 
-        Format your response exactly as follows, with each item on a new line:
-        Document type: [type]
-        Client name: [name]
-        Period/Year: [period]
-        Institution: [name]
-        Account number: [number]
-        Total value: [amount]
+        IMPORTANT: Keep document type to 3 words or less. Use standard abbreviations.
+
+        Format your response exactly as follows:
+        Document type: [SHORT TYPE]
+        Client name: [NAME]
+        Period/Year: [PERIOD]
+        Institution: [INSTITUTION]
+        Account number: [NUMBER]
+        Total value: [AMOUNT]
         """
 
         logger.info(f"Sending document to Anthropic Claude for analysis: {pdf_path}")
@@ -347,7 +349,7 @@ def process_document(pdf_path):
         extracted_text = response.content[0].text
         logger.info(f"Received Claude response for {pdf_path}")
 
-        # Parse the extracted text
+        # Parse the extracted text with enhanced parsing
         document_data = parse_ai_response(extracted_text)
         logger.info(f"Extracted data: {document_data}")
 
@@ -359,7 +361,7 @@ def process_document(pdf_path):
 
 def parse_ai_response(text):
     """
-    Parse the AI response into a structured dictionary
+    Parse the AI response into a structured dictionary with enhanced cleaning
 
     Args:
         text: Text response from Claude
@@ -384,21 +386,33 @@ def parse_ai_response(text):
         if not line:
             continue
 
-        # Extract document type
+        # Extract document type with cleaning
         if "document type:" in line.lower():
-            data['document_type'] = line.split(":", 1)[1].strip()
+            doc_type = line.split(":", 1)[1].strip()
+            # Clean up verbose document types
+            doc_type = clean_document_type(doc_type)
+            data['document_type'] = doc_type
 
         # Extract client name
         elif "client name:" in line.lower() or "recipient" in line.lower():
-            data['client_name'] = line.split(":", 1)[1].strip()
+            client_name = line.split(":", 1)[1].strip()
+            # Clean up client name
+            client_name = clean_client_name(client_name)
+            data['client_name'] = client_name
 
         # Extract period/year
         elif "period" in line.lower() or "year" in line.lower():
-            data['period_year'] = line.split(":", 1)[1].strip()
+            period = line.split(":", 1)[1].strip()
+            # Clean up period format
+            period = clean_period(period)
+            data['period_year'] = period
 
         # Extract institution
         elif "institution" in line.lower() or "payer" in line.lower():
-            data['institution'] = line.split(":", 1)[1].strip()
+            institution = line.split(":", 1)[1].strip()
+            # Clean up institution name
+            institution = clean_institution_name(institution)
+            data['institution'] = institution
 
         # Extract account number
         elif "account number" in line.lower():
@@ -409,3 +423,109 @@ def parse_ai_response(text):
             data['total_value'] = line.split(":", 1)[1].strip()
 
     return data
+
+def clean_document_type(doc_type):
+    """Clean and standardize document type"""
+    if not doc_type:
+        return "Document"
+    
+    # Remove common prefixes and clean up
+    doc_type = doc_type.replace("Form ", "").replace("IRS ", "").replace("Tax ", "")
+    
+    # Common standardizations
+    standardizations = {
+        'wage and tax statement': 'W-2',
+        'wages and tax statement': 'W-2',
+        'w2': 'W-2',
+        'interest income statement': '1099-INT',
+        'dividend income statement': '1099-DIV',
+        'retirement distribution statement': '1099-R',
+        'miscellaneous income': '1099-MISC',
+        'bank account statement': 'Bank-Statement',
+        'checking account statement': 'Checking-Statement',
+        'savings account statement': 'Savings-Statement',
+        'investment account statement': 'Investment-Statement',
+        'brokerage account statement': 'Brokerage-Statement',
+        'mortgage interest statement': '1098',
+        'property tax statement': 'Property-Tax',
+    }
+    
+    doc_lower = doc_type.lower()
+    for key, value in standardizations.items():
+        if key in doc_lower:
+            return value
+    
+    # If no match, limit to first 3 words
+    words = doc_type.split()
+    if len(words) > 3:
+        return ' '.join(words[:3])
+    
+    return doc_type
+
+def clean_client_name(client_name):
+    """Clean client name"""
+    if not client_name:
+        return "Unknown"
+    
+    # Remove common suffixes and prefixes
+    client_name = client_name.replace("Mr. ", "").replace("Mrs. ", "").replace("Ms. ", "")
+    client_name = client_name.replace(" Jr.", "").replace(" Sr.", "").replace(" III", "")
+    
+    return client_name.strip()
+
+def clean_period(period):
+    """Clean and standardize period/year"""
+    if not period:
+        return "Unknown"
+    
+    # Extract year if present
+    import re
+    year_match = re.search(r'20\d{2}', period)
+    if year_match:
+        return year_match.group()
+    
+    # Look for quarter references
+    if 'q1' in period.lower() or 'first quarter' in period.lower():
+        year = re.search(r'20\d{2}', period)
+        return f"{year.group() if year else '2023'}-Q1"
+    elif 'q2' in period.lower() or 'second quarter' in period.lower():
+        year = re.search(r'20\d{2}', period)
+        return f"{year.group() if year else '2023'}-Q2"
+    elif 'q3' in period.lower() or 'third quarter' in period.lower():
+        year = re.search(r'20\d{2}', period)
+        return f"{year.group() if year else '2023'}-Q3"
+    elif 'q4' in period.lower() or 'fourth quarter' in period.lower():
+        year = re.search(r'20\d{2}', period)
+        return f"{year.group() if year else '2023'}-Q4"
+    
+    return period[:20]  # Limit length
+
+def clean_institution_name(institution):
+    """Clean institution name"""
+    if not institution:
+        return "Unknown"
+    
+    # Common bank name standardizations
+    standardizations = {
+        'bank of america': 'BofA',
+        'wells fargo': 'Wells-Fargo',
+        'jp morgan chase': 'Chase',
+        'jpmorgan chase': 'Chase',
+        'american express': 'AmEx',
+        'charles schwab': 'Schwab',
+        'morgan stanley': 'Morgan-Stanley',
+        'goldman sachs': 'Goldman',
+        'td ameritrade': 'TD-Ameritrade',
+    }
+    
+    inst_lower = institution.lower()
+    for key, value in standardizations.items():
+        if key in inst_lower:
+            return value
+    
+    # If no match, limit to first 2 words
+    words = institution.split()
+    if len(words) > 2:
+        return '-'.join(words[:2])
+    
+    return institution
